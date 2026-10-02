@@ -11,6 +11,7 @@ public sealed class ChatSession : IDisposable
     const byte FrameFileChunk = 3;
     const byte FrameFileEnd = 4;
     const byte FramePing = 5;
+    const byte FrameFileSize = 6; // sent right after FileStart; old peers ignore it
 
     readonly Stream stream;
     readonly string receiveDir;
@@ -36,13 +37,22 @@ public sealed class ChatSession : IDisposable
         return WriteFrameAsync(FrameText, Encoding.UTF8.GetBytes(text), ct);
     }
 
-    public async Task SendFileAsync(string fileName, Stream source, CancellationToken ct = default)
+    public async Task SendFileAsync(string fileName, Stream source, Action<long, long>? onProgress = null, CancellationToken ct = default)
     {
         await fileLock.WaitAsync(ct);
         try
         {
             AppLog.Write("SESSION", $"{name} file tx start {fileName}");
+            long size = -1;
+            try { if (source.CanSeek) size = source.Length; } catch { }
             await WriteFrameAsync(FrameFileStart, Encoding.UTF8.GetBytes(fileName), ct);
+            if (size >= 0)
+            {
+                var sizeBytes = new byte[8];
+                BinaryPrimitives.WriteInt64LittleEndian(sizeBytes, size);
+                await WriteFrameAsync(FrameFileSize, sizeBytes, ct);
+            }
+            onProgress?.Invoke(0, size);
             var buffer = new byte[Protocol.ChunkSize];
             long total = 0;
             int read;
@@ -50,6 +60,7 @@ public sealed class ChatSession : IDisposable
             {
                 await WriteFrameAsync(FrameFileChunk, buffer.AsMemory(0, read), ct);
                 total += read;
+                onProgress?.Invoke(total, size);
             }
             await WriteFrameAsync(FrameFileEnd, ReadOnlyMemory<byte>.Empty, ct);
             AppLog.Write("SESSION", $"{name} file tx done bytes={total}");
@@ -90,6 +101,9 @@ public sealed class ChatSession : IDisposable
         FileStream? file = null;
         string? path = null;
         string fileName = "file";
+        ChatMessage? incoming = null;
+        long expected = -1;
+        long received = 0;
         try
         {
             while (true)
@@ -114,14 +128,31 @@ public sealed class ChatSession : IDisposable
                         break;
                     case FrameFileStart:
                         if (file != null) await file.DisposeAsync();
+                        incoming?.Fail();
                         fileName = Path.GetFileName(Encoding.UTF8.GetString(payload));
                         if (string.IsNullOrWhiteSpace(fileName)) fileName = "file";
                         path = UniquePath(fileName);
                         file = new FileStream(path, FileMode.Create, FileAccess.Write);
+                        expected = -1;
+                        received = 0;
+                        incoming = new ChatMessage { Text = fileName, IsFile = true, FilePath = path, ShowProgress = true };
                         AppLog.Write("SESSION", $"{name} file rx start {fileName}");
+                        MessageReceived?.Invoke(incoming);
+                        break;
+                    case FrameFileSize:
+                        if (incoming != null && payload.Length == 8)
+                        {
+                            expected = BinaryPrimitives.ReadInt64LittleEndian(payload);
+                            incoming.Report(received, expected);
+                        }
                         break;
                     case FrameFileChunk:
-                        if (file != null) await file.WriteAsync(payload, ct);
+                        if (file != null)
+                        {
+                            await file.WriteAsync(payload, ct);
+                            received += payload.Length;
+                            incoming?.Report(received, expected);
+                        }
                         break;
                     case FrameFileEnd:
                         if (file != null)
@@ -129,7 +160,8 @@ public sealed class ChatSession : IDisposable
                             await file.DisposeAsync();
                             file = null;
                             AppLog.Write("SESSION", $"{name} file rx done {fileName}");
-                            MessageReceived?.Invoke(new ChatMessage { Text = fileName, IsFile = true, FilePath = path });
+                            incoming?.Complete();
+                            incoming = null;
                         }
                         break;
                     default:
@@ -147,6 +179,7 @@ public sealed class ChatSession : IDisposable
         {
             heartbeat.Cancel();
             if (file != null) await file.DisposeAsync();
+            incoming?.Fail();
             AppLog.Write("SESSION", $"{name} read loop ended after {sw.Elapsed.TotalSeconds:F1}s frames={framesRead}");
         }
     }

@@ -14,6 +14,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["copyText"] = ("کپی متن", "Copy text"),
         ["share"] = ("اشتراک‌گذاری", "Share"),
         ["cancel"] = ("انصراف", "Cancel"),
+        ["fileFailed"] = ("انتقال فایل ناموفق بود", "File transfer failed"),
         ["pick"] = ("انتخاب دستگاه جفت‌شده", "Select paired device"),
         ["refresh"] = ("بروزرسانی", "Refresh"),
         ["connect"] = ("اتصال", "Connect"),

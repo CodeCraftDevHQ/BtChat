@@ -307,15 +307,18 @@ public partial class MainViewModel : ObservableObject
         if (s == null) return;
         var picked = await FilePicker.Default.PickAsync();
         if (picked == null) return;
+        var message = new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, FilePath = picked.FullPath, ShowProgress = true };
+        Messages.Add(message);
         try
         {
             await using var source = await picked.OpenReadAsync();
-            await Task.Run(() => s.SendFileAsync(picked.FileName, source));
-            Messages.Add(new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, FilePath = picked.FullPath });
+            await Task.Run(() => s.SendFileAsync(picked.FileName, source, (done, total) => message.Report(done, total)));
+            message.Complete();
         }
         catch (Exception ex)
         {
             AppLog.Error("VM", "send file failed", ex);
+            message.Fail();
             SetStatus("failed");
         }
     }
@@ -323,7 +326,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     async Task OpenFileAsync(ChatMessage? message)
     {
-        if (message?.FilePath == null) return;
+        if (message?.FilePath == null || message.ShowProgress || message.Failed) return;
         await Share.Default.RequestAsync(new ShareFileRequest
         {
             Title = message.Text,

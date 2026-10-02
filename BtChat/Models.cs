@@ -1,3 +1,5 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
 namespace BtChat;
 
 public record BtDevice(string Name, string Id);
@@ -11,7 +13,7 @@ public static class Protocol
     public const int PingTimeoutMs = 20000;
 }
 
-public class ChatMessage
+public class ChatMessage : ObservableObject
 {
     public string Text { get; init; } = "";
     public bool IsMine { get; init; }
@@ -23,6 +25,72 @@ public class ChatMessage
     public string TimeText => Time.ToString("HH:mm");
     public LayoutOptions Align => IsMine ? LayoutOptions.End : LayoutOptions.Start;
     public Color Bubble => IsMine ? Color.FromArgb("#DCF8C6") : Color.FromArgb("#ECECEC");
+
+    double progress;
+    bool showProgress;
+    bool failed;
+    string statusText = "";
+    long lastKey = -1;
+
+    public double Progress { get => progress; private set => SetProperty(ref progress, value); }
+    public bool ShowProgress { get => showProgress; set => SetProperty(ref showProgress, value); }
+    public bool Failed { get => failed; private set => SetProperty(ref failed, value); }
+    public bool HasStatus => statusText.Length > 0;
+    public string StatusText
+    {
+        get => statusText;
+        private set
+        {
+            if (SetProperty(ref statusText, value)) OnPropertyChanged(nameof(HasStatus));
+        }
+    }
+
+    // total < 0 means the size is unknown: only the transferred bytes are shown.
+    public void Report(long done, long total)
+    {
+        var key = total > 0 ? done * 100 / total : done / (256 * 1024);
+        if (key == lastKey) return;
+        lastKey = key;
+        var p = total > 0 ? Math.Min(1.0, (double)done / total) : 0;
+        var text = total > 0
+            ? $"{(int)(p * 100)}%  ({FormatSize(done)} / {FormatSize(total)})"
+            : FormatSize(done);
+        OnUi(() =>
+        {
+            Progress = p;
+            StatusText = text;
+            ShowProgress = true;
+        });
+    }
+
+    public void Complete() => OnUi(() =>
+    {
+        Progress = 1;
+        ShowProgress = false;
+        StatusText = "";
+    });
+
+    public void Fail() => OnUi(() =>
+    {
+        Failed = true;
+        ShowProgress = false;
+        StatusText = "⚠ " + Loc.Instance["fileFailed"];
+    });
+
+    static void OnUi(Action action)
+    {
+        if (MainThread.IsMainThread) action();
+        else MainThread.BeginInvokeOnMainThread(action);
+    }
+
+    static string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB" };
+        double v = bytes;
+        var i = 0;
+        while (v >= 1024 && i < units.Length - 1) { v /= 1024; i++; }
+        return i == 0 ? $"{bytes} B" : $"{v:F1} {units[i]}";
+    }
 }
 
 public interface IBluetoothTransport

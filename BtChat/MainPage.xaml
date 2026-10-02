@@ -70,6 +70,10 @@
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
                             <VerticalStackLayout Spacing="2">
                                 <Label Text="{Binding Display}" TextColor="Black" />
+                                <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding ShowProgress}"
+                                             MinimumWidthRequest="200" />
+                                <Label Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
+                                       FontSize="11" TextColor="Black" />
                                 <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
                             </VerticalStackLayout>
                             <Button Grid.Column="1" Text="⋮" FontSize="20" TextColor="Gray"
