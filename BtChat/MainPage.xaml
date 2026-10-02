@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:BtChat"
+             x:Class="BtChat.MainPage"
+             FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Padding="8" RowSpacing="6">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+            <Label Text="{Binding Status}" VerticalOptions="Center" FontAttributes="Bold" />
+            <Button Grid.Column="1" Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding DisconnectCommand}" />
+            <Button Grid.Column="2" Text="{Binding [log], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding ToggleLogCommand}" />
+            <Button Grid.Column="3" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding ToggleLanguageCommand}" />
+        </Grid>
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+            <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
+                    SelectedItem="{Binding SelectedDevice}"
+                    Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
+            <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding RefreshCommand}" />
+            <Button Grid.Column="2" Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding ConnectCommand}" />
+        </Grid>
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
+            <Button Grid.Column="1" Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding ConnectLanCommand}" />
+            <Label Grid.Row="1" Grid.ColumnSpan="2" FontSize="12" TextColor="Gray">
+                <Label.FormattedText>
+                    <FormattedString>
+                        <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
+                        <Span Text=" " />
+                        <Span Text="{Binding LocalAddresses}" />
+                    </FormattedString>
+                </Label.FormattedText>
+            </Label>
+        </Grid>
+        <CollectionView x:Name="MessagesView" Grid.Row="3" ItemsSource="{Binding Messages}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Margin="4" Padding="10,6" Stroke="Transparent" StrokeShape="RoundRectangle 12"
+                            HorizontalOptions="{Binding Align}" BackgroundColor="{Binding Bubble}"
+                            MaximumWidthRequest="420">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding OpenFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="{Binding Display}" TextColor="Black" />
+                            <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+        <Grid Grid.Row="3" RowDefinitions="*,Auto" ColumnDefinitions="*,*" ColumnSpacing="6" RowSpacing="6"
+              IsVisible="{Binding ShowLog}" BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
+            <Editor Grid.ColumnSpan="2" Text="{Binding LogText}" IsReadOnly="True" FontSize="11" />
+            <Button Grid.Row="1" Text="{Binding [copy], Source={x:Static local:Loc.Instance}}" Command="{Binding CopyLogCommand}" />
+            <Button Grid.Row="1" Grid.Column="1" Text="{Binding [clear], Source={x:Static local:Loc.Instance}}" Command="{Binding ClearLogCommand}" />
+        </Grid>
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+            <Button Text="📎" Command="{Binding AttachCommand}" IsEnabled="{Binding IsConnected}" />
+            <Entry Grid.Column="1" Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
+                   Placeholder="{Binding [type], Source={x:Static local:Loc.Instance}}" />
+            <Button Grid.Column="2" Text="{Binding [send], Source={x:Static local:Loc.Instance}}"
+                    Command="{Binding SendCommand}" IsEnabled="{Binding IsConnected}" />
+        </Grid>
+    </Grid>
+</ContentPage>
