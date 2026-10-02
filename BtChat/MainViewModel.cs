@@ -8,7 +8,7 @@ public partial class MainViewModel : ObservableObject
 {
     readonly IBluetoothTransport transport;
     readonly TcpTransport tcp;
-    readonly string receiveDir = Path.Combine(FileSystem.AppDataDirectory, "received");
+    readonly IReceivedFileStore files;
     readonly object gate = new();
     readonly SemaphoreSlim connectLock = new(1, 1);
     ChatSession? session;
@@ -53,9 +53,10 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsNotLinked));
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files)
     {
         this.transport = transport;
+        this.files = files;
         this.tcp = tcp;
         AppLog.Changed += () =>
         {
@@ -84,6 +85,7 @@ public partial class MainViewModel : ObservableObject
         AppLog.Write("APP", $"start {DeviceInfo.Current.Platform} {DeviceInfo.Current.VersionString} {DeviceInfo.Current.Manufacturer} {DeviceInfo.Current.Model}");
         LocalAddresses = string.Join("  |  ", tcp.GetLocalAddresses());
         _ = Task.Run(() => AcceptLoopAsync("tcp", tcp.AcceptAsync));
+        await files.EnsureReadyAsync();
         if (!await transport.EnsurePermissionsAsync())
         {
             AppLog.Write("APP", "bluetooth not usable, skipping bluetooth loops");
@@ -189,7 +191,7 @@ public partial class MainViewModel : ObservableObject
                 stream.Dispose();
                 return;
             }
-            current = new ChatSession(stream, receiveDir, name);
+            current = new ChatSession(stream, files, name);
             session = current;
         }
         AppLog.Write("VM", $"session started {name} inbound={inbound}");
@@ -307,7 +309,7 @@ public partial class MainViewModel : ObservableObject
         if (s == null) return;
         var picked = await FilePicker.Default.PickAsync();
         if (picked == null) return;
-        var message = new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, FilePath = picked.FullPath, ShowProgress = true };
+        var message = new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, Location = picked.FullPath, ShowProgress = true };
         Messages.Add(message);
         try
         {
@@ -326,26 +328,49 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     async Task OpenFileAsync(ChatMessage? message)
     {
-        if (message?.FilePath == null || message.ShowProgress || message.Failed) return;
-        await Share.Default.RequestAsync(new ShareFileRequest
-        {
-            Title = message.Text,
-            File = new ShareFile(message.FilePath)
-        });
+        if (message?.Location == null || message.ShowProgress || message.Failed) return;
+        await SafeAsync("open file", () => files.OpenAsync(message.Location, message.Text));
     }
 
     [RelayCommand]
     async Task MessageMenuAsync(ChatMessage? message)
     {
-        if (message == null || message.IsFile) return;
+        if (message == null) return;
         var page = Application.Current?.Windows.FirstOrDefault()?.Page;
         if (page == null) return;
         var loc = Loc.Instance;
+        if (message.IsFile)
+        {
+            if (message.Location == null || !message.HasMenu) return;
+            var options = new List<string> { loc["openFile"] };
+            if (message.IsReceivedFile) options.Add(loc["openFolder"]);
+            options.Add(loc["share"]);
+            var picked = await page.DisplayActionSheet(message.Text, loc["cancel"], null, options.ToArray());
+            if (picked == loc["openFile"])
+                await SafeAsync("open file", () => files.OpenAsync(message.Location, message.Text));
+            else if (picked == loc["openFolder"])
+                await SafeAsync("open folder", () => files.ShowInFolderAsync(message.Location));
+            else if (picked == loc["share"])
+                await SafeAsync("share file", () => files.ShareAsync(message.Location, message.Text));
+            return;
+        }
         var choice = await page.DisplayActionSheet(null, loc["cancel"], null, loc["copyText"], loc["share"]);
         if (choice == loc["copyText"])
             await Clipboard.Default.SetTextAsync(message.Text);
         else if (choice == loc["share"])
             await Share.Default.RequestAsync(new ShareTextRequest { Text = message.Text });
+    }
+
+    static async Task SafeAsync(string what, Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", what + " failed", ex);
+        }
     }
 
     [RelayCommand]

@@ -19,7 +19,9 @@ public class ChatMessage : ObservableObject
     public bool IsMine { get; init; }
     public bool IsFile { get; init; }
     public bool IsText => !IsFile;
-    public string? FilePath { get; init; }
+    public bool IsReceivedFile => IsFile && !IsMine;
+    public bool HasMenu => IsText || (IsFile && !ShowProgress && !Failed);
+    public string? Location { get; init; }
     public DateTime Time { get; init; } = DateTime.Now;
     public string Display => IsFile ? "📎 " + Text : Text;
     public string TimeText => Time.ToString("HH:mm");
@@ -33,8 +35,22 @@ public class ChatMessage : ObservableObject
     long lastKey = -1;
 
     public double Progress { get => progress; private set => SetProperty(ref progress, value); }
-    public bool ShowProgress { get => showProgress; set => SetProperty(ref showProgress, value); }
-    public bool Failed { get => failed; private set => SetProperty(ref failed, value); }
+    public bool ShowProgress
+    {
+        get => showProgress;
+        set
+        {
+            if (SetProperty(ref showProgress, value)) OnPropertyChanged(nameof(HasMenu));
+        }
+    }
+    public bool Failed
+    {
+        get => failed;
+        private set
+        {
+            if (SetProperty(ref failed, value)) OnPropertyChanged(nameof(HasMenu));
+        }
+    }
     public bool HasStatus => statusText.Length > 0;
     public string StatusText
     {
@@ -99,4 +115,22 @@ public interface IBluetoothTransport
     Task<IReadOnlyList<BtDevice>> GetPairedDevicesAsync();
     Task<Stream> ConnectAsync(BtDevice device, CancellationToken ct);
     Task<Stream> AcceptAsync(CancellationToken ct);
+}
+
+public sealed class ReceivedFile
+{
+    public required Stream Stream { get; init; }
+    public required string Name { get; init; }
+    public required string Location { get; init; }
+    public required Func<Task> Complete { get; init; }
+    public required Func<Task> Abort { get; init; }
+}
+
+public interface IReceivedFileStore
+{
+    Task EnsureReadyAsync();
+    Task<ReceivedFile> CreateAsync(string fileName, CancellationToken ct);
+    Task OpenAsync(string location, string name);
+    Task ShowInFolderAsync(string location);
+    Task ShareAsync(string location, string name);
 }

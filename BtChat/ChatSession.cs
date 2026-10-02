@@ -14,7 +14,7 @@ public sealed class ChatSession : IDisposable
     const byte FrameFileSize = 6; // sent right after FileStart; old peers ignore it
 
     readonly Stream stream;
-    readonly string receiveDir;
+    readonly IReceivedFileStore store;
     readonly string name;
     readonly SemaphoreSlim writeLock = new(1, 1);
     readonly SemaphoreSlim fileLock = new(1, 1);
@@ -23,12 +23,11 @@ public sealed class ChatSession : IDisposable
 
     public event Action<ChatMessage>? MessageReceived;
 
-    public ChatSession(Stream stream, string receiveDir, string name)
+    public ChatSession(Stream stream, IReceivedFileStore store, string name)
     {
         this.stream = stream;
-        this.receiveDir = receiveDir;
+        this.store = store;
         this.name = name;
-        Directory.CreateDirectory(receiveDir);
     }
 
     public Task SendTextAsync(string text, CancellationToken ct = default)
@@ -98,8 +97,7 @@ public sealed class ChatSession : IDisposable
         _ = Task.Run(() => WatchdogAsync(heartbeat.Token));
         _ = Task.Run(() => PingAsync(heartbeat.Token));
         var header = new byte[5];
-        FileStream? file = null;
-        string? path = null;
+        ReceivedFile? file = null;
         string fileName = "file";
         ChatMessage? incoming = null;
         long expected = -1;
@@ -127,15 +125,16 @@ public sealed class ChatSession : IDisposable
                         MessageReceived?.Invoke(new ChatMessage { Text = Encoding.UTF8.GetString(payload) });
                         break;
                     case FrameFileStart:
-                        if (file != null) await file.DisposeAsync();
+                        await AbortFileAsync(file);
+                        file = null;
                         incoming?.Fail();
                         fileName = Path.GetFileName(Encoding.UTF8.GetString(payload));
                         if (string.IsNullOrWhiteSpace(fileName)) fileName = "file";
-                        path = UniquePath(fileName);
-                        file = new FileStream(path, FileMode.Create, FileAccess.Write);
+                        file = await store.CreateAsync(fileName, ct);
+                        fileName = file.Name;
                         expected = -1;
                         received = 0;
-                        incoming = new ChatMessage { Text = fileName, IsFile = true, FilePath = path, ShowProgress = true };
+                        incoming = new ChatMessage { Text = fileName, IsFile = true, Location = file.Location, ShowProgress = true };
                         AppLog.Write("SESSION", $"{name} file rx start {fileName}");
                         MessageReceived?.Invoke(incoming);
                         break;
@@ -149,7 +148,7 @@ public sealed class ChatSession : IDisposable
                     case FrameFileChunk:
                         if (file != null)
                         {
-                            await file.WriteAsync(payload, ct);
+                            await file.Stream.WriteAsync(payload, ct);
                             received += payload.Length;
                             incoming?.Report(received, expected);
                         }
@@ -157,7 +156,8 @@ public sealed class ChatSession : IDisposable
                     case FrameFileEnd:
                         if (file != null)
                         {
-                            await file.DisposeAsync();
+                            await file.Stream.DisposeAsync();
+                            await file.Complete();
                             file = null;
                             AppLog.Write("SESSION", $"{name} file rx done {fileName}");
                             incoming?.Complete();
@@ -178,7 +178,7 @@ public sealed class ChatSession : IDisposable
         finally
         {
             heartbeat.Cancel();
-            if (file != null) await file.DisposeAsync();
+            await AbortFileAsync(file);
             incoming?.Fail();
             AppLog.Write("SESSION", $"{name} read loop ended after {sw.Elapsed.TotalSeconds:F1}s frames={framesRead}");
         }
@@ -226,15 +226,18 @@ public sealed class ChatSession : IDisposable
         }
     }
 
-    string UniquePath(string fileName)
+    static async Task AbortFileAsync(ReceivedFile? file)
     {
-        var baseName = Path.GetFileNameWithoutExtension(fileName);
-        var ext = Path.GetExtension(fileName);
-        var path = Path.Combine(receiveDir, fileName);
-        var n = 1;
-        while (File.Exists(path))
-            path = Path.Combine(receiveDir, $"{baseName} ({n++}){ext}");
-        return path;
+        if (file == null) return;
+        try
+        {
+            await file.Stream.DisposeAsync();
+            await file.Abort();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("SESSION", "abort partial file failed", ex);
+        }
     }
 
     public void Dispose()

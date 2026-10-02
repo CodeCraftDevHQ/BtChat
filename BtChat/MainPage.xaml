@@ -81,7 +81,7 @@
                                     WidthRequest="32" HeightRequest="32"
                                     MinimumWidthRequest="0" MinimumHeightRequest="0"
                                     VerticalOptions="Start"
-                                    IsVisible="{Binding IsText}"
+                                    IsVisible="{Binding HasMenu}"
                                     Command="{Binding MessageMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                     CommandParameter="{Binding .}" />
                         </Grid>

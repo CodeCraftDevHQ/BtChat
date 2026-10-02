@@ -8,8 +8,10 @@ public static class MauiProgram
         builder.UseMauiApp<App>();
 #if ANDROID
         builder.Services.AddSingleton<IBluetoothTransport, AndroidBluetoothTransport>();
+        builder.Services.AddSingleton<IReceivedFileStore, AndroidReceivedFileStore>();
 #elif WINDOWS
         builder.Services.AddSingleton<IBluetoothTransport, WindowsBluetoothTransport>();
+        builder.Services.AddSingleton<IReceivedFileStore, WindowsReceivedFileStore>();
 #endif
         builder.Services.AddSingleton<TcpTransport>();
         builder.Services.AddSingleton<MainViewModel>();
