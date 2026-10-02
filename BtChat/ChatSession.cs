@@ -12,6 +12,7 @@ public sealed class ChatSession : IDisposable
     const byte FrameFileEnd = 4;
     const byte FramePing = 5;
     const byte FrameFileSize = 6; // sent right after FileStart; old peers ignore it
+    const byte FrameFileCancel = 7; // sender aborted the current file; old peers ignore it
 
     readonly Stream stream;
     readonly IReceivedFileStore store;
@@ -39,12 +40,15 @@ public sealed class ChatSession : IDisposable
     public async Task SendFileAsync(string fileName, Stream source, Action<long, long>? onProgress = null, CancellationToken ct = default)
     {
         await fileLock.WaitAsync(ct);
+        var started = false;
         try
         {
             AppLog.Write("SESSION", $"{name} file tx start {fileName}");
             long size = -1;
             try { if (source.CanSeek) size = source.Length; } catch { }
+            ct.ThrowIfCancellationRequested();
             await WriteFrameAsync(FrameFileStart, Encoding.UTF8.GetBytes(fileName), ct);
+            started = true;
             if (size >= 0)
             {
                 var sizeBytes = new byte[8];
@@ -57,12 +61,27 @@ public sealed class ChatSession : IDisposable
             int read;
             while ((read = await source.ReadAsync(buffer, ct)) > 0)
             {
+                ct.ThrowIfCancellationRequested();
                 await WriteFrameAsync(FrameFileChunk, buffer.AsMemory(0, read), ct);
                 total += read;
                 onProgress?.Invoke(total, size);
             }
             await WriteFrameAsync(FrameFileEnd, ReadOnlyMemory<byte>.Empty, ct);
             AppLog.Write("SESSION", $"{name} file tx done bytes={total}");
+        }
+        catch (OperationCanceledException) when (started && ct.IsCancellationRequested)
+        {
+            // The receiver already opened a file for us: tell it to drop the partial data.
+            AppLog.Write("SESSION", $"{name} file tx canceled by user, notifying peer");
+            try
+            {
+                await WriteFrameAsync(FrameFileCancel, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("SESSION", $"{name} cancel frame failed", ex);
+            }
+            throw;
         }
         finally
         {
@@ -78,9 +97,10 @@ public sealed class ChatSession : IDisposable
             var header = new byte[5];
             header[0] = type;
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(1), payload.Length);
-            await stream.WriteAsync(header, ct);
-            if (payload.Length > 0) await stream.WriteAsync(payload, ct);
-            await stream.FlushAsync(ct);
+            // ct only guards waiting for the lock: cancelling in the middle of a frame would corrupt the stream.
+            await stream.WriteAsync(header, CancellationToken.None);
+            if (payload.Length > 0) await stream.WriteAsync(payload, CancellationToken.None);
+            await stream.FlushAsync(CancellationToken.None);
         }
         finally
         {
@@ -161,6 +181,16 @@ public sealed class ChatSession : IDisposable
                             file = null;
                             AppLog.Write("SESSION", $"{name} file rx done {fileName}");
                             incoming?.Complete();
+                            incoming = null;
+                        }
+                        break;
+                    case FrameFileCancel:
+                        if (file != null || incoming != null)
+                        {
+                            AppLog.Write("SESSION", $"{name} file rx canceled by sender {fileName}");
+                            await AbortFileAsync(file);
+                            file = null;
+                            incoming?.Fail("fileCanceledByPeer");
                             incoming = null;
                         }
                         break;

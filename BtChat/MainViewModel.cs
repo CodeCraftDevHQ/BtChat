@@ -35,6 +35,7 @@ public partial class MainViewModel : ObservableObject
 
     public bool IsBluetoothMode => ModeIndex == 0;
     public bool IsLanMode => ModeIndex == 1;
+    public bool HasMessages => Messages.Count > 0;
     public bool IsLinked => IsConnected || autoTarget != null;
     public bool IsNotLinked => !IsLinked;
 
@@ -58,6 +59,8 @@ public partial class MainViewModel : ObservableObject
         this.transport = transport;
         this.files = files;
         this.tcp = tcp;
+        Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasMessages));
+        foreach (var m in ChatHistory.Load()) Messages.Add(m);
         AppLog.Changed += () =>
         {
             if (ShowLog) MainThread.BeginInvokeOnMainThread(() => LogText = AppLog.GetText(400));
@@ -200,7 +203,7 @@ public partial class MainViewModel : ObservableObject
             autoTarget = null;
             Preferences.Default.Remove("autoBt");
         }
-        current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() => Messages.Add(m));
+        current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() => AddMessage(m));
         IsConnected = true;
         SetStatus("connected");
         try
@@ -293,7 +296,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             await s.SendTextAsync(text);
-            Messages.Add(new ChatMessage { Text = text, IsMine = true });
+            AddMessage(new ChatMessage { Text = text, IsMine = true });
         }
         catch (Exception ex)
         {
@@ -309,13 +312,19 @@ public partial class MainViewModel : ObservableObject
         if (s == null) return;
         var picked = await FilePicker.Default.PickAsync();
         if (picked == null) return;
-        var message = new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, Location = picked.FullPath, ShowProgress = true };
-        Messages.Add(message);
+        var cts = new CancellationTokenSource();
+        var message = new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, Location = picked.FullPath, ShowProgress = true, Cts = cts };
+        AddMessage(message);
         try
         {
             await using var source = await picked.OpenReadAsync();
-            await Task.Run(() => s.SendFileAsync(picked.FileName, source, (done, total) => message.Report(done, total)));
+            await Task.Run(() => s.SendFileAsync(picked.FileName, source, (done, total) => message.Report(done, total), cts.Token));
             message.Complete();
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            AppLog.Write("VM", "send file canceled by user");
+            message.Fail("fileCanceled");
         }
         catch (Exception ex)
         {
@@ -323,6 +332,62 @@ public partial class MainViewModel : ObservableObject
             message.Fail();
             SetStatus("failed");
         }
+        finally
+        {
+            message.Cts = null;
+        }
+    }
+
+    [RelayCommand]
+    void CancelFile(ChatMessage? message)
+    {
+        if (message?.Cts == null) return;
+        AppLog.Write("UI", $"cancel sending {message.Text}");
+        message.Cts.Cancel();
+    }
+
+    void AddMessage(ChatMessage message)
+    {
+        message.Finished += SaveHistory;
+        Messages.Add(message);
+        if (!message.ShowProgress) SaveHistory();
+    }
+
+    void SaveHistory() => ChatHistory.Save(Messages);
+
+    [RelayCommand]
+    async Task ClearHistoryAsync()
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        var loc = Loc.Instance;
+        var ok = await page.DisplayAlert(loc["clearHistory"], loc["clearHistoryAsk"], loc["delete"], loc["cancel"]);
+        if (!ok) return;
+        // Transfers that are still running keep their bubble.
+        foreach (var m in Messages.Where(m => !m.ShowProgress).ToList()) Messages.Remove(m);
+        SaveHistory();
+        AppLog.Write("UI", "chat history cleared");
+    }
+
+    async Task DeleteMessageAsync(ChatMessage message, Page page)
+    {
+        var loc = Loc.Instance;
+        if (message.IsReceivedFile && message.Location != null && !message.Failed)
+        {
+            var ok = await page.DisplayAlert(message.Text, loc["deleteFileAsk"], loc["delete"], loc["cancel"]);
+            if (!ok) return;
+            try
+            {
+                await files.DeleteAsync(message.Location);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("VM", "delete file failed", ex);
+                await page.DisplayAlert(message.Text, loc["deleteFileFailed"], "OK");
+            }
+        }
+        Messages.Remove(message);
+        SaveHistory();
     }
 
     [RelayCommand]
@@ -341,24 +406,38 @@ public partial class MainViewModel : ObservableObject
         var loc = Loc.Instance;
         if (message.IsFile)
         {
-            if (message.Location == null || !message.HasMenu) return;
-            var options = new List<string> { loc["openFile"] };
-            if (message.IsReceivedFile) options.Add(loc["openFolder"]);
-            options.Add(loc["share"]);
+            if (!message.HasMenu) return;
+            var options = new List<string>();
+            if (!message.Failed && message.Location != null)
+            {
+                options.Add(loc["openFile"]);
+                if (message.IsReceivedFile) options.Add(loc["openFolder"]);
+                options.Add(loc["share"]);
+            }
+            var deleteLabel = message.IsReceivedFile && !message.Failed ? loc["deleteFile"] : loc["deleteMessage"];
+            options.Add(deleteLabel);
             var picked = await page.DisplayActionSheet(message.Text, loc["cancel"], null, options.ToArray());
-            if (picked == loc["openFile"])
-                await SafeAsync("open file", () => files.OpenAsync(message.Location, message.Text));
+            if (picked == null) return;
+            if (picked == deleteLabel)
+                await DeleteMessageAsync(message, page);
+            else if (picked == loc["openFile"])
+                await SafeAsync("open file", () => files.OpenAsync(message.Location!, message.Text));
             else if (picked == loc["openFolder"])
-                await SafeAsync("open folder", () => files.ShowInFolderAsync(message.Location));
+                await SafeAsync("open folder", () => files.ShowInFolderAsync(message.Location!));
             else if (picked == loc["share"])
-                await SafeAsync("share file", () => files.ShareAsync(message.Location, message.Text));
+                await SafeAsync("share file", () => files.ShareAsync(message.Location!, message.Text));
             return;
         }
-        var choice = await page.DisplayActionSheet(null, loc["cancel"], null, loc["copyText"], loc["share"]);
+        var choice = await page.DisplayActionSheet(null, loc["cancel"], null, loc["copyText"], loc["share"], loc["deleteMessage"]);
         if (choice == loc["copyText"])
             await Clipboard.Default.SetTextAsync(message.Text);
         else if (choice == loc["share"])
             await Share.Default.RequestAsync(new ShareTextRequest { Text = message.Text });
+        else if (choice == loc["deleteMessage"])
+        {
+            Messages.Remove(message);
+            SaveHistory();
+        }
     }
 
     static async Task SafeAsync(string what, Func<Task> action)

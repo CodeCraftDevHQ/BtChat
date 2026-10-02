@@ -20,7 +20,8 @@ public class ChatMessage : ObservableObject
     public bool IsFile { get; init; }
     public bool IsText => !IsFile;
     public bool IsReceivedFile => IsFile && !IsMine;
-    public bool HasMenu => IsText || (IsFile && !ShowProgress && !Failed);
+    public bool HasMenu => IsText || (IsFile && !ShowProgress);
+    public bool CanCancel => IsMine && IsFile && ShowProgress;
     public string? Location { get; init; }
     public DateTime Time { get; init; } = DateTime.Now;
     public string Display => IsFile ? "📎 " + Text : Text;
@@ -28,7 +29,11 @@ public class ChatMessage : ObservableObject
     public LayoutOptions Align => IsMine ? LayoutOptions.End : LayoutOptions.Start;
     public Color Bubble => IsMine ? Color.FromArgb("#DCF8C6") : Color.FromArgb("#ECECEC");
 
+    public CancellationTokenSource? Cts { get; set; }
+    public event Action? Finished;
+
     double progress;
+    string? failKey;
     bool showProgress;
     bool failed;
     string statusText = "";
@@ -40,7 +45,11 @@ public class ChatMessage : ObservableObject
         get => showProgress;
         set
         {
-            if (SetProperty(ref showProgress, value)) OnPropertyChanged(nameof(HasMenu));
+            if (SetProperty(ref showProgress, value))
+            {
+                OnPropertyChanged(nameof(HasMenu));
+                OnPropertyChanged(nameof(CanCancel));
+            }
         }
     }
     public bool Failed
@@ -51,6 +60,7 @@ public class ChatMessage : ObservableObject
             if (SetProperty(ref failed, value)) OnPropertyChanged(nameof(HasMenu));
         }
     }
+    public string? FailKey => failKey;
     public bool HasStatus => statusText.Length > 0;
     public string StatusText
     {
@@ -84,14 +94,36 @@ public class ChatMessage : ObservableObject
         Progress = 1;
         ShowProgress = false;
         StatusText = "";
+        Finished?.Invoke();
     });
 
-    public void Fail() => OnUi(() =>
+    public void Fail(string key = "fileFailed") => OnUi(() =>
     {
+        failKey = key;
         Failed = true;
         ShowProgress = false;
-        StatusText = "⚠ " + Loc.Instance["fileFailed"];
+        StatusText = "⚠ " + Loc.Instance[key];
+        Finished?.Invoke();
     });
+
+    public static ChatMessage Restore(StoredMessage s)
+    {
+        var m = new ChatMessage
+        {
+            Text = s.Text,
+            IsMine = s.IsMine,
+            IsFile = s.IsFile,
+            Location = s.Location,
+            Time = s.Time
+        };
+        if (s.IsFile && s.FailKey != null)
+        {
+            m.failKey = s.FailKey;
+            m.failed = true;
+            m.statusText = "⚠ " + Loc.Instance[s.FailKey];
+        }
+        return m;
+    }
 
     static void OnUi(Action action)
     {
@@ -133,4 +165,5 @@ public interface IReceivedFileStore
     Task OpenAsync(string location, string name);
     Task ShowInFolderAsync(string location);
     Task ShareAsync(string location, string name);
+    Task DeleteAsync(string location);
 }

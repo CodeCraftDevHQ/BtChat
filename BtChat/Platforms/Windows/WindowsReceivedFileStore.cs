@@ -87,4 +87,10 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
 
     public Task ShareAsync(string location, string name) =>
         Share.Default.RequestAsync(new ShareFileRequest(name, new ShareFile(location)));
+
+    public Task DeleteAsync(string location)
+    {
+        if (File.Exists(location)) File.Delete(location);
+        return Task.CompletedTask;
+    }
 }

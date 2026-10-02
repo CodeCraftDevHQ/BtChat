@@ -11,6 +11,11 @@ public partial class MainPage : ContentPage
             if (vm.Messages.Count > 0)
                 MessagesView.ScrollTo(vm.Messages.Count - 1, position: ScrollToPosition.End, animate: false);
         };
-        Loaded += async (_, _) => await vm.InitAsync();
+        Loaded += async (_, _) =>
+        {
+            if (vm.Messages.Count > 0)
+                MessagesView.ScrollTo(vm.Messages.Count - 1, position: ScrollToPosition.End, animate: false);
+            await vm.InitAsync();
+        };
     }
 }

@@ -179,4 +179,18 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
         chooser.AddFlags(ActivityFlags.NewTask);
         Ctx.StartActivity(chooser);
     }
+
+    public Task DeleteAsync(string location)
+    {
+        if (IsContentUri(location))
+        {
+            Ctx.ContentResolver!.Delete(AndroidUri.Parse(location)!, null, null);
+        }
+        else if (File.Exists(location))
+        {
+            File.Delete(location);
+            Android.Media.MediaScannerConnection.ScanFile(Ctx, new[] { location }, null, null);
+        }
+        return Task.CompletedTask;
+    }
 }
