@@ -45,15 +45,19 @@
                     <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
                             Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
                 </Grid>
-                <Label FontSize="12" TextColor="Gray">
-                    <Label.FormattedText>
-                        <FormattedString>
-                            <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
-                            <Span Text=" " />
-                            <Span Text="{Binding LocalAddresses}" />
-                        </FormattedString>
-                    </Label.FormattedText>
-                </Label>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
+                                <Span Text=" " />
+                                <Span Text="{Binding LocalAddresses}" FontAttributes="Bold" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding RefreshAddressesCommand}" />
+                </Grid>
             </VerticalStackLayout>
         </Grid>
         <Button Grid.Row="3" Text="{Binding [clearHistory], Source={x:Static local:Loc.Instance}}"
