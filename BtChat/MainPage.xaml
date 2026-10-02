@@ -5,37 +5,56 @@
              x:Class="BtChat.MainPage"
              FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Padding="8" RowSpacing="6">
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
-            <Label Text="{Binding Status}" VerticalOptions="Center" FontAttributes="Bold" />
-            <Button Grid.Column="1" Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding DisconnectCommand}" />
-            <Button Grid.Column="2" Text="{Binding [log], Source={x:Static local:Loc.Instance}}"
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+            <Label Text="{Binding Status}" VerticalOptions="Center" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+            <Button Grid.Column="1" Text="{Binding [log], Source={x:Static local:Loc.Instance}}"
                     Command="{Binding ToggleLogCommand}" />
-            <Button Grid.Column="3" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
+            <Button Grid.Column="2" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
                     Command="{Binding ToggleLanguageCommand}" />
         </Grid>
-        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-            <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
-                    SelectedItem="{Binding SelectedDevice}"
-                    Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
-            <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding RefreshCommand}" />
-            <Button Grid.Column="2" Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding ConnectCommand}" />
-        </Grid>
-        <Grid Grid.Row="2" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="6">
-            <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
-            <Button Grid.Column="1" Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding ConnectLanCommand}" />
-            <Label Grid.Row="1" Grid.ColumnSpan="2" FontSize="12" TextColor="Gray">
-                <Label.FormattedText>
-                    <FormattedString>
-                        <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
-                        <Span Text=" " />
-                        <Span Text="{Binding LocalAddresses}" />
-                    </FormattedString>
-                </Label.FormattedText>
-            </Label>
+        <Picker Grid.Row="1" Title="{Binding [mode], Source={x:Static local:Loc.Instance}}"
+                SelectedIndex="{Binding ModeIndex}">
+            <Picker.ItemsSource>
+                <x:Array Type="{x:Type x:String}">
+                    <x:String>Bluetooth</x:String>
+                    <x:String>Wi-Fi / IP</x:String>
+                </x:Array>
+            </Picker.ItemsSource>
+        </Picker>
+        <Grid Grid.Row="2">
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsBluetoothMode}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
+                            SelectedItem="{Binding SelectedDevice}"
+                            Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
+                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding RefreshCommand}" />
+                </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                    <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding ConnectCommand}" />
+                    <Button Grid.Column="1" Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding DisconnectCommand}" />
+                </Grid>
+            </VerticalStackLayout>
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsLanMode}">
+                <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                    <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding ConnectLanCommand}" />
+                    <Button Grid.Column="1" Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding DisconnectCommand}" />
+                </Grid>
+                <Label FontSize="12" TextColor="Gray">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
+                            <Span Text=" " />
+                            <Span Text="{Binding LocalAddresses}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+            </VerticalStackLayout>
         </Grid>
         <CollectionView x:Name="MessagesView" Grid.Row="3" ItemsSource="{Binding Messages}">
             <CollectionView.ItemTemplate>

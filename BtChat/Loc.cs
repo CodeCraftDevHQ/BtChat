@@ -10,6 +10,7 @@ public sealed class Loc : INotifyPropertyChanged
     static readonly Dictionary<string, (string Fa, string En)> table = new()
     {
         ["lang"] = ("English", "فارسی"),
+        ["mode"] = ("نوع اتصال", "Connection type"),
         ["pick"] = ("انتخاب دستگاه جفت‌شده", "Select paired device"),
         ["refresh"] = ("بروزرسانی", "Refresh"),
         ["connect"] = ("اتصال", "Connect"),

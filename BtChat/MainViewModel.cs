@@ -28,6 +28,20 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] bool showLog;
     [ObservableProperty] string logText = "";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBluetoothMode))]
+    [NotifyPropertyChangedFor(nameof(IsLanMode))]
+    int modeIndex = Preferences.Default.Get("mode", 0);
+
+    public bool IsBluetoothMode => ModeIndex == 0;
+    public bool IsLanMode => ModeIndex == 1;
+
+    partial void OnModeIndexChanged(int value)
+    {
+        if (value < 0) { ModeIndex = 0; return; }
+        Preferences.Default.Set("mode", value);
+    }
+
     public MainViewModel(IBluetoothTransport transport, TcpTransport tcp)
     {
         this.transport = transport;
