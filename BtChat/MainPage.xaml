@@ -30,20 +30,20 @@
                     <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
                             Command="{Binding RefreshCommand}" />
                 </Grid>
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                <Grid>
                     <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ConnectCommand}" />
-                    <Button Grid.Column="1" Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding DisconnectCommand}" />
+                            Command="{Binding ConnectCommand}" IsVisible="{Binding IsNotLinked}" />
+                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
                 </Grid>
             </VerticalStackLayout>
             <VerticalStackLayout Spacing="6" IsVisible="{Binding IsLanMode}">
                 <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                <Grid>
                     <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ConnectLanCommand}" />
-                    <Button Grid.Column="1" Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding DisconnectCommand}" />
+                            Command="{Binding ConnectLanCommand}" IsVisible="{Binding IsNotLinked}" />
+                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
                 </Grid>
                 <Label FontSize="12" TextColor="Gray">
                     <Label.FormattedText>
@@ -67,10 +67,20 @@
                                 Command="{Binding OpenFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                 CommandParameter="{Binding .}" />
                         </Border.GestureRecognizers>
-                        <VerticalStackLayout Spacing="2">
-                            <Label Text="{Binding Display}" TextColor="Black" />
-                            <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
-                        </VerticalStackLayout>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{Binding Display}" TextColor="Black" />
+                                <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
+                            </VerticalStackLayout>
+                            <Button Grid.Column="1" Text="⋮" FontSize="20" TextColor="Gray"
+                                    BackgroundColor="Transparent" Padding="0" CornerRadius="0"
+                                    WidthRequest="32" HeightRequest="32"
+                                    MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                    VerticalOptions="Start"
+                                    IsVisible="{Binding IsText}"
+                                    Command="{Binding MessageMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                    CommandParameter="{Binding .}" />
+                        </Grid>
                     </Border>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

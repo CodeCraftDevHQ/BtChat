@@ -16,6 +16,7 @@ public class ChatMessage
     public string Text { get; init; } = "";
     public bool IsMine { get; init; }
     public bool IsFile { get; init; }
+    public bool IsText => !IsFile;
     public string? FilePath { get; init; }
     public DateTime Time { get; init; } = DateTime.Now;
     public string Display => IsFile ? "📎 " + Text : Text;

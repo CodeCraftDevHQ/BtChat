@@ -31,15 +31,26 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBluetoothMode))]
     [NotifyPropertyChangedFor(nameof(IsLanMode))]
-    int modeIndex = Preferences.Default.Get("mode", 0);
+    int modeIndex = 0;
 
     public bool IsBluetoothMode => ModeIndex == 0;
     public bool IsLanMode => ModeIndex == 1;
+    public bool IsLinked => IsConnected || autoTarget != null;
+    public bool IsNotLinked => !IsLinked;
 
     partial void OnModeIndexChanged(int value)
     {
         if (value < 0) { ModeIndex = 0; return; }
-        Preferences.Default.Set("mode", value);
+        AppLog.Write("UI", $"mode changed to {value}");
+        if (IsLinked) Disconnect();
+    }
+
+    partial void OnIsConnectedChanged(bool value) => RaiseLinked();
+
+    void RaiseLinked()
+    {
+        OnPropertyChanged(nameof(IsLinked));
+        OnPropertyChanged(nameof(IsNotLinked));
     }
 
     public MainViewModel(IBluetoothTransport transport, TcpTransport tcp)
@@ -62,6 +73,7 @@ public partial class MainViewModel : ObservableObject
     {
         statusKey = key;
         Status = Loc.Instance[key];
+        RaiseLinked();
         AppLog.Write("UI", $"status={key}");
     }
 
@@ -317,6 +329,20 @@ public partial class MainViewModel : ObservableObject
             Title = message.Text,
             File = new ShareFile(message.FilePath)
         });
+    }
+
+    [RelayCommand]
+    async Task MessageMenuAsync(ChatMessage? message)
+    {
+        if (message == null || message.IsFile) return;
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        var loc = Loc.Instance;
+        var choice = await page.DisplayActionSheet(null, loc["cancel"], null, loc["copyText"], loc["share"]);
+        if (choice == loc["copyText"])
+            await Clipboard.Default.SetTextAsync(message.Text);
+        else if (choice == loc["share"])
+            await Share.Default.RequestAsync(new ShareTextRequest { Text = message.Text });
     }
 
     [RelayCommand]

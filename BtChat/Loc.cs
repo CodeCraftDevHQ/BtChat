@@ -11,6 +11,9 @@ public sealed class Loc : INotifyPropertyChanged
     {
         ["lang"] = ("English", "فارسی"),
         ["mode"] = ("نوع اتصال", "Connection type"),
+        ["copyText"] = ("کپی متن", "Copy text"),
+        ["share"] = ("اشتراک‌گذاری", "Share"),
+        ["cancel"] = ("انصراف", "Cancel"),
         ["pick"] = ("انتخاب دستگاه جفت‌شده", "Select paired device"),
         ["refresh"] = ("بروزرسانی", "Refresh"),
         ["connect"] = ("اتصال", "Connect"),
