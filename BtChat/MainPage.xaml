@@ -45,6 +45,28 @@
                     <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
                             Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
                 </Grid>
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6"
+                      IsVisible="{Binding IsNotLinked}">
+                    <Button Text="{Binding [search], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding SearchDevicesCommand}" IsEnabled="{Binding IsNotSearching}" />
+                    <Button Grid.Column="1" Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding ShowQrCommand}" />
+                    <Button Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding [scanQr], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding ScanQrCommand}" IsVisible="{Binding CanScanQr}" />
+                </Grid>
+                <Label Text="{Binding SearchText}" IsVisible="{Binding HasSearchText}" FontSize="12" TextColor="Gray" />
+                <Label Text="{Binding [foundHeader], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasFound}"
+                       FontSize="12" TextColor="Gray" />
+                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding FoundDevices}"
+                                     IsVisible="{Binding IsNotLinked}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate>
+                            <Button Text="{Binding Display}"
+                                    Command="{Binding ConnectFoundCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                    CommandParameter="{Binding .}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
                     <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
                         <Label.FormattedText>

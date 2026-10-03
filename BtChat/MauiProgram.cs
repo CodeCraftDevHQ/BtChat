@@ -1,3 +1,6 @@
+#if ANDROID
+using BarcodeScanning;
+#endif
 namespace BtChat;
 
 public static class MauiProgram
@@ -13,7 +16,14 @@ public static class MauiProgram
         builder.Services.AddSingleton<IBluetoothTransport, WindowsBluetoothTransport>();
         builder.Services.AddSingleton<IReceivedFileStore, WindowsReceivedFileStore>();
 #endif
+#if ANDROID
+        builder.UseBarcodeScanning();
+        builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
+#else
+        builder.Services.AddSingleton<IQrScanner, NoQrScanner>();
+#endif
         builder.Services.AddSingleton<TcpTransport>();
+        builder.Services.AddSingleton<DiscoveryService>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainPage>();
         return builder.Build();

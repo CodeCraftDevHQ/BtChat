@@ -5,7 +5,7 @@ using System.Net.Sockets;
 
 namespace BtChat;
 
-public record LocalAddress(string Interface, string Address, bool IsMobile);
+public record LocalAddress(string Interface, string Address, bool IsMobile, string? Mask);
 
 public class TcpTransport
 {
@@ -29,22 +29,27 @@ public class TcpTransport
         {
             foreach (var n in NetworkInterface.GetAllNetworkInterfaces())
             {
-                var ips = new List<string>();
+                var ips = new List<(string Ip, string? Mask)>();
                 try
                 {
                     foreach (var a in n.GetIPProperties().UnicastAddresses)
-                        if (a.Address.AddressFamily == AddressFamily.InterNetwork) ips.Add(a.Address.ToString());
+                    {
+                        if (a.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                        string? mask = null;
+                        try { mask = a.IPv4Mask?.ToString(); } catch { }
+                        ips.Add((a.Address.ToString(), mask));
+                    }
                 }
                 catch (Exception ex)
                 {
                     if (log) AppLog.Error("TCP", $"iface {n.Name} read failed", ex);
                 }
                 if (log)
-                    AppLog.Write("TCP", $"iface {n.Name} type={n.NetworkInterfaceType} status={n.OperationalStatus} ipv4=[{string.Join(", ", ips)}]");
+                    AppLog.Write("TCP", $"iface {n.Name} type={n.NetworkInterfaceType} status={n.OperationalStatus} ipv4=[{string.Join(", ", ips.Select(i => i.Ip + "/" + (i.Mask ?? "?")))}]");
                 if (n.OperationalStatus != OperationalStatus.Up || n.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-                foreach (var ip in ips)
+                foreach (var (ip, mask) in ips)
                     if (!result.Any(r => r.Address == ip))
-                        result.Add(new LocalAddress(n.Name, ip, IsMobileInterface(n.Name)));
+                        result.Add(new LocalAddress(n.Name, ip, IsMobileInterface(n.Name), mask));
             }
         }
         catch (Exception ex)
@@ -64,6 +69,22 @@ public class TcpTransport
     public bool IsLocalAddress(IPAddress ip) =>
         IPAddress.IsLoopback(ip) || GetLocalAddressInfos().Any(a => a.Address == ip.ToString());
 
+    // Drops our own addresses and puts the ones in the same /24 as one of our networks first.
+    public IReadOnlyList<string> OrderCandidates(IEnumerable<string> ips)
+    {
+        var locals = GetLocalAddressInfos().Where(a => !a.IsMobile).Select(a => a.Address).ToList();
+        static string Prefix(string ip)
+        {
+            var p = ip.Split('.');
+            return p.Length == 4 ? string.Join('.', p[0], p[1], p[2]) : ip;
+        }
+        var prefixes = locals.Select(Prefix).ToHashSet();
+        return ips
+            .Where(ip => !locals.Contains(ip) && !ip.StartsWith("127."))
+            .OrderByDescending(ip => prefixes.Contains(Prefix(ip)))
+            .ToList();
+    }
+
     public void LogNetworkState(string reason)
     {
         AppLog.Write("TCP", $"network state ({reason}), listener={(listener == null ? "not started" : "port " + Port)}");
@@ -74,15 +95,15 @@ public class TcpTransport
             : $"NO usable local address (all up addresses: {string.Join(", ", all.Select(a => a.Interface + "=" + a.Address))})");
     }
 
-    public async Task<Stream> ConnectAsync(string host, CancellationToken ct)
+    public async Task<Stream> ConnectAsync(string host, CancellationToken ct, int timeoutSeconds = 8)
     {
-        AppLog.Write("TCP", $"connect to {host}:{Port} (timeout 8s)");
+        AppLog.Write("TCP", $"connect to {host}:{Port} (timeout {timeoutSeconds}s)");
         var sw = Stopwatch.StartNew();
         var client = new TcpClient();
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(8));
+            timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
             await client.ConnectAsync(host, Port, timeout.Token);
         }
         catch (Exception ex)

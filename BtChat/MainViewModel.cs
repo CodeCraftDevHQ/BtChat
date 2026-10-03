@@ -12,6 +12,10 @@ public partial class MainViewModel : ObservableObject
     readonly IBluetoothTransport transport;
     readonly TcpTransport tcp;
     readonly IReceivedFileStore files;
+    readonly IQrScanner qr;
+    readonly DiscoveryService discovery;
+    QrShowPage? qrPage;
+    bool searched;
     readonly object gate = new();
     readonly SemaphoreSlim connectLock = new(1, 1);
     ChatSession? session;
@@ -37,6 +41,28 @@ public partial class MainViewModel : ObservableObject
 
     public bool IsBluetoothMode => ModeIndex == 0;
     public bool IsLanMode => ModeIndex == 1;
+    public ObservableCollection<FoundDevice> FoundDevices { get; } = new();
+    public bool HasFound => FoundDevices.Count > 0;
+    public bool CanScanQr => qr.IsSupported;
+    public bool IsNotSearching => !IsSearching;
+    public string SearchText => IsSearching
+        ? Loc.Instance["searching"]
+        : (searched && FoundDevices.Count == 0 ? Loc.Instance["noneFound"] : "");
+    public bool HasSearchText => SearchText.Length > 0;
+    [ObservableProperty] bool isSearching;
+
+    partial void OnIsSearchingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsNotSearching));
+        NotifySearch();
+    }
+
+    void NotifySearch()
+    {
+        OnPropertyChanged(nameof(SearchText));
+        OnPropertyChanged(nameof(HasSearchText));
+    }
+
     IReadOnlyList<string> addresses = Array.Empty<string>();
     public string LocalAddresses => addresses.Count > 0 ? string.Join("  |  ", addresses) : Loc.Instance["noNetwork"];
     public bool HasMessages => Messages.Count > 0;
@@ -48,7 +74,18 @@ public partial class MainViewModel : ObservableObject
         if (value < 0) { ModeIndex = 0; return; }
         AppLog.Write("UI", $"mode changed to {value}");
         if (IsLinked) Disconnect();
-        if (value == 1) UpdateAddresses("switched to Wi-Fi mode");
+        discovery.SetActive(value == 1);
+        if (value == 1)
+        {
+            UpdateAddresses("switched to Wi-Fi mode");
+            _ = SearchDevicesAsync();
+        }
+        else
+        {
+            FoundDevices.Clear();
+            searched = false;
+            NotifySearch();
+        }
     }
 
     void UpdateAddresses(string reason)
@@ -81,8 +118,17 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsNotLinked));
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery)
     {
+        this.qr = qr;
+        this.discovery = discovery;
+        discovery.CanRespond = () => IsLanMode && session == null;
+        discovery.DeviceFound += OnDeviceFound;
+        FoundDevices.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasFound));
+            NotifySearch();
+        };
         this.transport = transport;
         this.files = files;
         this.tcp = tcp;
@@ -98,7 +144,11 @@ public partial class MainViewModel : ObservableObject
             Connectivity.Current.ConnectivityChanged += (_, e) =>
             {
                 AppLog.Write("TCP", $"connectivity changed: access={e.NetworkAccess} profiles=[{string.Join(", ", e.ConnectionProfiles)}]");
-                MainThread.BeginInvokeOnMainThread(() => UpdateAddresses("connectivity changed"));
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    UpdateAddresses("connectivity changed");
+                    if (IsLanMode && session == null) _ = SearchDevicesAsync();
+                });
             };
         }
         catch (Exception ex)
@@ -127,6 +177,7 @@ public partial class MainViewModel : ObservableObject
         AppLog.Write("APP", $"start {DeviceInfo.Current.Platform} {DeviceInfo.Current.VersionString} {DeviceInfo.Current.Manufacturer} {DeviceInfo.Current.Model}");
         UpdateAddresses("startup");
         _ = Task.Run(() => AcceptLoopAsync("tcp", tcp.AcceptAsync));
+        _ = Task.Run(discovery.RunAsync);
         await files.EnsureReadyAsync();
         if (!await transport.EnsurePermissionsAsync())
         {
@@ -244,6 +295,14 @@ public partial class MainViewModel : ObservableObject
         }
         current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() => AddMessage(m));
         IsConnected = true;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            FoundDevices.Clear();
+            var shown = qrPage;
+            if (shown == null) return;
+            try { await shown.Navigation.PopModalAsync(); }
+            catch (Exception ex) { AppLog.Error("QR", "closing qr page failed", ex); }
+        });
         SetStatus("connected");
         try
         {
@@ -326,6 +385,12 @@ public partial class MainViewModel : ObservableObject
             SetStatus("selfIp");
             return;
         }
+        await ConnectViaTcpAsync(new[] { address });
+    }
+
+    // Tries each address in order; the first one that answers wins.
+    async Task ConnectViaTcpAsync(IReadOnlyList<string> candidates, int timeoutSeconds = 8)
+    {
         if (!await connectLock.WaitAsync(0))
         {
             AppLog.Write("TCP", "connect skipped, another connect in progress");
@@ -333,30 +398,153 @@ public partial class MainViewModel : ObservableObject
         }
         try
         {
-            Host = address;
-            Preferences.Default.Set("host", address);
             tcp.LogNetworkState("before connect");
             SetStatus("connecting");
-            var stream = await tcp.ConnectAsync(address, CancellationToken.None);
-            _ = RunSessionAsync(stream, false, "tcp-out");
-        }
-        catch (OperationCanceledException)
-        {
-            SetStatus("tcpTimeout");
-        }
-        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
-        {
-            SetStatus("tcpRefused");
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("VM", "tcp connect failed", ex);
-            SetStatus("failed");
+            Exception? last = null;
+            foreach (var address in candidates)
+            {
+                try
+                {
+                    Host = address;
+                    Preferences.Default.Set("host", address);
+                    var stream = await tcp.ConnectAsync(address, CancellationToken.None, timeoutSeconds);
+                    _ = RunSessionAsync(stream, false, "tcp-out");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                }
+            }
+            switch (last)
+            {
+                case OperationCanceledException:
+                    SetStatus("tcpTimeout");
+                    break;
+                case SocketException { SocketErrorCode: SocketError.ConnectionRefused }:
+                    SetStatus("tcpRefused");
+                    break;
+                default:
+                    SetStatus("failed");
+                    break;
+            }
         }
         finally
         {
             connectLock.Release();
         }
+    }
+
+    [RelayCommand]
+    async Task SearchDevicesAsync()
+    {
+        if (IsSearching || !IsLanMode || session != null) return;
+        IsSearching = true;
+        searched = true;
+        FoundDevices.Clear();
+        AppLog.Write("UI", "search devices started");
+        try
+        {
+            tcp.LogNetworkState("before search");
+            await discovery.SearchAsync(TimeSpan.FromSeconds(3.5));
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("DISCOVERY", "search failed", ex);
+        }
+        finally
+        {
+            IsSearching = false;
+            AppLog.Write("UI", $"search devices done, found={FoundDevices.Count}");
+        }
+    }
+
+    void OnDeviceFound(FoundDevice device) => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        if (!IsSearching || FoundDevices.Any(d => d.Address == device.Address)) return;
+        FoundDevices.Add(device);
+    });
+
+    [RelayCommand]
+    async Task ConnectFoundAsync(FoundDevice? device)
+    {
+        if (device == null || session != null) return;
+        AppLog.Write("UI", $"connect to found device {device.Name} {device.Address}");
+        await ConnectViaTcpAsync(new[] { device.Address });
+    }
+
+    [RelayCommand]
+    async Task ShowQrAsync()
+    {
+        UpdateAddresses("show qr");
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        var loc = Loc.Instance;
+        if (addresses.Count == 0)
+        {
+            await page.DisplayAlert(loc["showQr"], loc["noNetwork"], "OK");
+            return;
+        }
+        var payload = QrPayload.Build(addresses, DiscoveryService.DeviceName());
+        AppLog.Write("QR", $"showing qr, payload={payload}");
+        try
+        {
+            var shown = new QrShowPage(payload, LocalAddresses);
+            qrPage = shown;
+            shown.Disappearing += (_, _) =>
+            {
+                if (qrPage == shown) qrPage = null;
+            };
+            await page.Navigation.PushModalAsync(shown);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("QR", "show qr failed", ex);
+            qrPage = null;
+        }
+    }
+
+    [RelayCommand]
+    async Task ScanQrAsync()
+    {
+        if (session != null || !qr.IsSupported) return;
+        AppLog.Write("QR", "scan pressed");
+        string? text;
+        try
+        {
+            text = await qr.ScanAsync();
+        }
+        catch (PermissionException ex)
+        {
+            AppLog.Error("QR", "camera permission denied", ex);
+            SetStatus("qrNoCamera");
+            return;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("QR", "scan failed", ex);
+            SetStatus("qrFailed");
+            return;
+        }
+        if (text == null)
+        {
+            AppLog.Write("QR", "scan closed without result");
+            return;
+        }
+        AppLog.Write("QR", $"scanned: {text}");
+        if (!QrPayload.TryParse(text, out var info))
+        {
+            SetStatus("qrInvalid");
+            return;
+        }
+        var candidates = tcp.OrderCandidates(info.Addresses);
+        AppLog.Write("QR", $"peer '{info.Name}' addresses=[{string.Join(", ", info.Addresses)}] try order=[{string.Join(", ", candidates)}]");
+        if (candidates.Count == 0)
+        {
+            SetStatus("selfIp");
+            return;
+        }
+        await ConnectViaTcpAsync(candidates, 4);
     }
 
     [RelayCommand]
@@ -541,6 +729,7 @@ public partial class MainViewModel : ObservableObject
         Loc.Instance.Toggle();
         SetStatus(statusKey);
         OnPropertyChanged(nameof(LocalAddresses));
+        NotifySearch();
     }
 
     [RelayCommand]
