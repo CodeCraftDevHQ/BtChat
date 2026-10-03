@@ -26,6 +26,8 @@ public class ChatMessage : ObservableObject
         }
     }
     public bool IsMine { get; init; }
+    public string SenderName { get; init; } = "";
+    public bool HasSender => SenderName.Length > 0;
     public bool IsFile { get; init; }
     public bool IsText => !IsFile;
     public bool IsReceivedFile => IsFile && !IsMine;
@@ -144,7 +146,8 @@ public class ChatMessage : ObservableObject
             IsMine = s.IsMine,
             IsFile = s.IsFile,
             Location = s.Location,
-            Time = s.Time
+            Time = s.Time,
+            SenderName = s.SenderName
         };
         if (s.IsFile && s.FailKey != null)
         {
@@ -191,7 +194,7 @@ public sealed class ReceivedFile
 public interface IReceivedFileStore
 {
     Task EnsureReadyAsync();
-    Task<ReceivedFile> CreateAsync(string fileName, CancellationToken ct);
+    Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct);
     Task OpenAsync(string location, string name);
     Task ShowInFolderAsync(string location);
     Task ShareAsync(string location, string name);

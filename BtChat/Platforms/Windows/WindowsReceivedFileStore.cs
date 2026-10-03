@@ -28,13 +28,13 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
     }
 
-    static string TargetDir => Path.Combine(DownloadsPath(), FolderName);
+    static string TargetDir(string folder) => Path.Combine(DownloadsPath(), FolderName, folder);
 
     public Task EnsureReadyAsync() => Task.CompletedTask;
 
-    public Task<ReceivedFile> CreateAsync(string fileName, CancellationToken ct)
+    public Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct)
     {
-        var dir = TargetDir;
+        var dir = TargetDir(folder);
         Directory.CreateDirectory(dir);
         var baseName = Path.GetFileNameWithoutExtension(fileName);
         var ext = Path.GetExtension(fileName);

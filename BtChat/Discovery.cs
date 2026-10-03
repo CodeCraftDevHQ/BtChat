@@ -32,12 +32,8 @@ public sealed class DiscoveryService
 
     public static string DeviceName()
     {
-        string name;
-        try { name = DeviceInfo.Current.Name; }
-        catch { name = ""; }
-        name = new string(name.Where(c => c != '|' && !char.IsControl(c)).ToArray()).Trim();
-        if (name.Length == 0) name = "BtChat";
-        return name.Length > 40 ? name[..40] : name;
+        var name = LocalDevice.Name;
+        return name.Length == 0 ? "BtChat" : name;
     }
 
     // Android drops some broadcast/multicast packets in power-save unless a multicast lock is held.

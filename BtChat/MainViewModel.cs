@@ -29,7 +29,24 @@ public partial class MainViewModel : ObservableObject
     string statusKey = "idle";
     bool started;
 
-    public ObservableCollection<ChatMessage> Messages { get; } = new();
+    const string UnknownId = "unknown";
+    readonly ObservableCollection<ChatMessage> noMessages = new();
+    Conversation? linkedChat;
+    CancellationTokenSource? helloCts;
+
+    public ObservableCollection<Conversation> Conversations { get; } = new();
+    public ObservableCollection<ChatMessage> Messages => CurrentChat?.Messages ?? noMessages;
+    public event Action? ScrollRequested;
+
+    [ObservableProperty] Conversation? currentChat;
+    [ObservableProperty] bool isDrawerOpen;
+    [ObservableProperty] string myName = LocalDevice.Name;
+
+    public string CurrentTitle => CurrentChat?.Name ?? "BtChat";
+    public bool HasChats => Conversations.Count > 0;
+    public bool HasNoChats => Conversations.Count == 0;
+    public bool CanSend => IsConnected && (linkedChat == null || ReferenceEquals(CurrentChat, linkedChat));
+    public string DraftPlaceholder => Loc.Instance[CanSend ? "type" : "notLinkedHere"];
     public ObservableCollection<BtDevice> Devices { get; } = new();
 
     [ObservableProperty] BtDevice? selectedDevice;
@@ -78,7 +95,7 @@ public partial class MainViewModel : ObservableObject
         PumpSends();
     }
 
-    public int TransferCount => Messages.Count(m => m.ShowProgress);
+    public int TransferCount => Conversations.Sum(c => c.Messages.Count(m => m.ShowProgress));
     public bool HasTransfers => TransferCount > 0;
     public string TransferText => string.Format(Loc.Instance["transferCount"], TransferCount);
 
@@ -140,7 +157,103 @@ public partial class MainViewModel : ObservableObject
         UpdateAddresses("manual refresh");
     }
 
-    partial void OnIsConnectedChanged(bool value) => RaiseLinked();
+    partial void OnIsConnectedChanged(bool value)
+    {
+        RaiseLinked();
+        NotifyComposer();
+    }
+
+    void NotifyComposer()
+    {
+        OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(DraftPlaceholder));
+    }
+
+    partial void OnCurrentChatChanged(Conversation? oldValue, Conversation? newValue)
+    {
+        if (oldValue != null) oldValue.IsCurrent = false;
+        if (newValue != null)
+        {
+            newValue.IsCurrent = true;
+            newValue.Unread = 0;
+        }
+        Preferences.Default.Set("lastChat", newValue?.Id ?? "");
+        OnPropertyChanged(nameof(Messages));
+        OnPropertyChanged(nameof(HasMessages));
+        OnPropertyChanged(nameof(CurrentTitle));
+        NotifyComposer();
+        ScrollRequested?.Invoke();
+    }
+
+    partial void OnMyNameChanged(string value)
+    {
+        LocalDevice.Name = value;
+        helloCts?.Cancel();
+        var cts = helloCts = new CancellationTokenSource();
+        _ = ResendHelloAsync(cts.Token);
+    }
+
+    async Task ResendHelloAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(800, ct);
+            var s = session;
+            if (s != null) await s.SendHelloAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "resend hello failed", ex);
+        }
+    }
+
+    void WatchChat(Conversation chat)
+    {
+        chat.Messages.CollectionChanged += (_, _) =>
+        {
+            if (ReferenceEquals(chat, CurrentChat))
+            {
+                OnPropertyChanged(nameof(HasMessages));
+                ScrollRequested?.Invoke();
+            }
+            NotifyTransfers();
+        };
+        chat.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Conversation.Name) && ReferenceEquals(chat, CurrentChat))
+                OnPropertyChanged(nameof(CurrentTitle));
+        };
+    }
+
+    Conversation GetOrCreateChat(string id, string name)
+    {
+        var chat = Conversations.FirstOrDefault(c => c.Id == id);
+        if (chat == null)
+        {
+            chat = new Conversation(id, name);
+            WatchChat(chat);
+            Conversations.Insert(0, chat);
+        }
+        else if (chat.Name != name)
+        {
+            chat.Name = name;
+        }
+        return chat;
+    }
+
+    Conversation TargetChat()
+    {
+        var chat = linkedChat ?? CurrentChat;
+        if (chat != null) return chat;
+        chat = GetOrCreateChat(UnknownId, Loc.Instance["unknownDevice"]);
+        CurrentChat = chat;
+        return chat;
+    }
+
+    Conversation? ChatOf(ChatMessage message) => Conversations.FirstOrDefault(c => c.Messages.Contains(message));
 
     void RaiseLinked()
     {
@@ -170,12 +283,19 @@ public partial class MainViewModel : ObservableObject
         this.transport = transport;
         this.files = files;
         this.tcp = tcp;
-        Messages.CollectionChanged += (_, _) =>
+        Conversations.CollectionChanged += (_, _) =>
         {
-            OnPropertyChanged(nameof(HasMessages));
-            NotifyTransfers();
+            OnPropertyChanged(nameof(HasChats));
+            OnPropertyChanged(nameof(HasNoChats));
         };
-        foreach (var m in ChatHistory.Load()) Messages.Add(m);
+        foreach (var chat in ChatHistory.Load())
+        {
+            WatchChat(chat);
+            Conversations.Add(chat);
+        }
+        var lastId = Preferences.Default.Get("lastChat", "");
+        CurrentChat = Conversations.FirstOrDefault(c => c.Id == lastId) ?? Conversations.FirstOrDefault();
+        IsDrawerOpen = Conversations.Count == 0;
         AppLog.Changed += () =>
         {
             if (ShowLog) MainThread.BeginInvokeOnMainThread(() => LogText = AppLog.GetText(400));
@@ -342,7 +462,24 @@ public partial class MainViewModel : ObservableObject
             autoTarget = null;
             Preferences.Default.Remove("autoBt");
         }
-        current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() => AddMessage(m));
+        Conversation? chat = null;
+        current.PeerIdentified += () => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var first = chat == null;
+            var found = GetOrCreateChat(current.PeerId!, current.PeerName!);
+            chat = found;
+            linkedChat = found;
+            found.IsLinked = true;
+            if (first)
+            {
+                CurrentChat = found;
+                IsDrawerOpen = false;
+            }
+            NotifyComposer();
+            SaveHistory();
+        });
+        current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() =>
+            AddMessage(chat ?? GetOrCreateChat(UnknownId, Loc.Instance["unknownDevice"]), m));
         IsConnected = true;
         MainThread.BeginInvokeOnMainThread(async () =>
         {
@@ -370,6 +507,15 @@ public partial class MainViewModel : ObservableObject
             }
             FailQueuedSends();
             IsConnected = false;
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (chat != null)
+                {
+                    chat.IsLinked = false;
+                    if (ReferenceEquals(linkedChat, chat)) linkedChat = null;
+                }
+                NotifyComposer();
+            });
             AppLog.Write("VM", $"session {name} finished, autoTarget={(autoTarget != null ? autoTarget.Name : "none")}");
             SetStatus(autoTarget != null ? "retrying" : "idle");
         }
@@ -612,12 +758,12 @@ public partial class MainViewModel : ObservableObject
     {
         var s = session;
         var text = Draft.Trim();
-        if (s == null || text.Length == 0) return;
+        if (s == null || text.Length == 0 || !CanSend) return;
         Draft = "";
         try
         {
             await s.SendTextAsync(text);
-            AddMessage(new ChatMessage { Text = text, IsMine = true });
+            AddMessage(TargetChat(), new ChatMessage { Text = text, IsMine = true, SenderName = LocalDevice.Name });
         }
         catch (Exception ex)
         {
@@ -640,7 +786,8 @@ public partial class MainViewModel : ObservableObject
     async Task AttachAsync()
     {
         var s = session;
-        if (s == null) return;
+        if (s == null || !CanSend) return;
+        var chat = TargetChat();
         IReadOnlyList<PickedFile> picked;
         try
         {
@@ -662,11 +809,11 @@ public partial class MainViewModel : ObservableObject
                 Id = s.NewFileId(),
                 File = file,
                 Size = size,
-                Message = new ChatMessage { Text = file.Name, IsMine = true, IsFile = true, Location = file.Location }
+                Message = new ChatMessage { Text = file.Name, IsMine = true, IsFile = true, Location = file.Location, SenderName = LocalDevice.Name }
             };
             item.Message.Cts = item.Cts;
             item.Message.SetQueued();
-            AddMessage(item.Message);
+            AddMessage(chat, item.Message);
             lock (sendLock) sendQueue.Add(item);
             try
             {
@@ -776,31 +923,35 @@ public partial class MainViewModel : ObservableObject
         message.Cts?.Cancel();
     }
 
-    void AddMessage(ChatMessage message)
+    void AddMessage(Conversation chat, ChatMessage message)
     {
         message.Finished += SaveHistory;
         message.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ChatMessage.ShowProgress)) NotifyTransfers();
         };
-        Messages.Add(message);
+        chat.Messages.Add(message);
+        if (!message.IsMine && !ReferenceEquals(chat, CurrentChat)) chat.Unread++;
+        var index = Conversations.IndexOf(chat);
+        if (index > 0) Conversations.Move(index, 0);
         if (!message.ShowProgress) SaveHistory();
     }
 
-    void SaveHistory() => ChatHistory.Save(Messages);
+    void SaveHistory() => ChatHistory.Save(Conversations);
 
     [RelayCommand]
     async Task ClearHistoryAsync()
     {
         var page = Application.Current?.Windows.FirstOrDefault()?.Page;
         if (page == null) return;
+        var chat = CurrentChat;
+        if (chat == null) return;
         var loc = Loc.Instance;
         var ok = await page.DisplayAlert(loc["clearHistory"], loc["clearHistoryAsk"], loc["delete"], loc["cancel"]);
         if (!ok) return;
-        // Transfers that are still running keep their bubble.
-        foreach (var m in Messages.Where(m => !m.ShowProgress).ToList())
+        foreach (var m in chat.Messages.Where(m => !m.ShowProgress).ToList())
         {
-            Messages.Remove(m);
+            chat.Messages.Remove(m);
             ReleaseIfUnused(m);
         }
         SaveHistory();
@@ -824,7 +975,7 @@ public partial class MainViewModel : ObservableObject
                 await page.DisplayAlert(message.Text, loc["deleteFileFailed"], "OK");
             }
         }
-        Messages.Remove(message);
+        ChatOf(message)?.Messages.Remove(message);
         ReleaseIfUnused(message);
         SaveHistory();
     }
@@ -834,7 +985,7 @@ public partial class MainViewModel : ObservableObject
     {
         var location = message.Location;
         if (!message.IsMine || !message.IsFile || location == null) return;
-        if (Messages.Any(m => m.Location == location)) return;
+        if (Conversations.Any(c => c.Messages.Any(m => m.Location == location))) return;
         fileSource.Release(location);
     }
 
@@ -883,7 +1034,7 @@ public partial class MainViewModel : ObservableObject
             await Share.Default.RequestAsync(new ShareTextRequest { Text = message.Text });
         else if (choice == loc["deleteMessage"])
         {
-            Messages.Remove(message);
+            ChatOf(message)?.Messages.Remove(message);
             SaveHistory();
         }
     }
@@ -908,6 +1059,47 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(LocalAddresses));
         NotifySearch();
         NotifyTransfers();
+        NotifyComposer();
+    }
+
+    [RelayCommand]
+    void ToggleDrawer() => IsDrawerOpen = !IsDrawerOpen;
+
+    [RelayCommand]
+    void CloseDrawer() => IsDrawerOpen = false;
+
+    [RelayCommand]
+    void OpenChat(Conversation? chat)
+    {
+        if (chat == null) return;
+        CurrentChat = chat;
+        IsDrawerOpen = false;
+    }
+
+    [RelayCommand]
+    async Task ChatMenuAsync(Conversation? chat)
+    {
+        if (chat == null) return;
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        var loc = Loc.Instance;
+        var choice = await page.DisplayActionSheet(chat.Name, loc["cancel"], null, loc["deleteChat"]);
+        if (choice != loc["deleteChat"]) return;
+        if (ReferenceEquals(chat, linkedChat))
+        {
+            await page.DisplayAlert(chat.Name, loc["chatInUse"], "OK");
+            return;
+        }
+        var ok = await page.DisplayAlert(chat.Name, loc["deleteChatAsk"], loc["delete"], loc["cancel"]);
+        if (!ok) return;
+        var removed = chat.Messages.ToList();
+        var index = Conversations.IndexOf(chat);
+        Conversations.Remove(chat);
+        foreach (var m in removed) ReleaseIfUnused(m);
+        if (ReferenceEquals(chat, CurrentChat))
+            CurrentChat = Conversations.Count > 0 ? Conversations[Math.Min(index, Conversations.Count - 1)] : null;
+        SaveHistory();
+        AppLog.Write("UI", "chat deleted");
     }
 
     public bool CanOpenBatterySettings => keepAlive.CanOpenBatterySettings;
@@ -920,7 +1112,11 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    void ToggleLog() => ShowLog = !ShowLog;
+    void ToggleLog()
+    {
+        ShowLog = !ShowLog;
+        if (ShowLog) IsDrawerOpen = false;
+    }
 
     [RelayCommand]
     async Task CopyLogAsync()

@@ -2,152 +2,237 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:BtChat"
-             x:Class="BtChat.MainPage"
-             FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Padding="8" RowSpacing="6">
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
-            <Label Text="{Binding Status}" VerticalOptions="Center" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-            <Button Grid.Column="1" Text="{Binding [battery], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding BatterySettingsCommand}" IsVisible="{Binding CanOpenBatterySettings}" />
-            <Button Grid.Column="2" Text="{Binding [log], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding ToggleLogCommand}" />
-            <Button Grid.Column="3" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding ToggleLanguageCommand}" />
-        </Grid>
-        <Picker Grid.Row="1" Title="{Binding [mode], Source={x:Static local:Loc.Instance}}"
-                SelectedIndex="{Binding ModeIndex}">
-            <Picker.ItemsSource>
-                <x:Array Type="{x:Type x:String}">
-                    <x:String>Bluetooth</x:String>
-                    <x:String>Wi-Fi / IP</x:String>
-                </x:Array>
-            </Picker.ItemsSource>
-        </Picker>
-        <Grid Grid.Row="2">
-            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsBluetoothMode}">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                    <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
-                            SelectedItem="{Binding SelectedDevice}"
-                            Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
-                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding RefreshCommand}" />
-                </Grid>
-                <Grid>
-                    <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ConnectCommand}" IsVisible="{Binding IsNotLinked}" />
-                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
-                </Grid>
-            </VerticalStackLayout>
-            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsLanMode}">
-                <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
-                <Grid>
-                    <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ConnectLanCommand}" IsVisible="{Binding IsNotLinked}" />
-                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
-                </Grid>
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6"
-                      IsVisible="{Binding IsNotLinked}">
-                    <Button Text="{Binding [search], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding SearchDevicesCommand}" IsEnabled="{Binding IsNotSearching}" />
-                    <Button Grid.Column="1" Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ShowQrCommand}" />
-                    <Button Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding [scanQr], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ScanQrCommand}" IsVisible="{Binding CanScanQr}" />
-                </Grid>
-                <Label Text="{Binding SearchText}" IsVisible="{Binding HasSearchText}" FontSize="12" TextColor="Gray" />
-                <Label Text="{Binding [foundHeader], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasFound}"
-                       FontSize="12" TextColor="Gray" />
-                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding FoundDevices}"
-                                     IsVisible="{Binding IsNotLinked}">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate>
-                            <Button Text="{Binding Display}"
-                                    Command="{Binding ConnectFoundCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
-                                    CommandParameter="{Binding .}" />
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
+             x:Class="BtChat.MainPage">
+    <Grid FlowDirection="LeftToRight">
+        <Grid x:Name="MainArea" RowDefinitions="Auto,Auto,*,Auto" Padding="8" RowSpacing="6"
+              FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Button Text="☰" FontSize="20" Padding="0" WidthRequest="48" HeightRequest="44"
+                        Command="{Binding ToggleDrawerCommand}" />
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label Text="{Binding CurrentTitle}" FontAttributes="Bold" FontSize="18" LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="TailTruncation" />
                 </VerticalStackLayout>
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                    <Label Text="{Binding [concurrentFiles], Source={x:Static local:Loc.Instance}}"
-                           VerticalOptions="Center" />
-                    <Switch Grid.Column="1" IsToggled="{Binding ConcurrentFiles}" />
-                </Grid>
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                    <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
-                        <Label.FormattedText>
-                            <FormattedString>
-                                <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
-                                <Span Text=" " />
-                                <Span Text="{Binding LocalAddresses}" FontAttributes="Bold" />
-                            </FormattedString>
-                        </Label.FormattedText>
-                    </Label>
-                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding RefreshAddressesCommand}" />
-                </Grid>
-            </VerticalStackLayout>
-        </Grid>
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="6">
-            <Label Text="{Binding TransferText}" IsVisible="{Binding HasTransfers}"
-                   FontSize="12" TextColor="Gray" VerticalOptions="Center" />
-            <Button Grid.Column="1" Text="{Binding [clearHistory], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding ClearHistoryCommand}" IsVisible="{Binding HasMessages}"
-                    HorizontalOptions="End" FontSize="12" TextColor="Gray" BackgroundColor="Transparent"
-                    Padding="8,0" HeightRequest="32" MinimumHeightRequest="0" />
-        </Grid>
-        <CollectionView x:Name="MessagesView" Grid.Row="4" ItemsSource="{Binding Messages}">
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Border Margin="4" Padding="10,6" Stroke="Transparent" StrokeShape="RoundRectangle 12"
-                            HorizontalOptions="{Binding Align}" BackgroundColor="{Binding Bubble}"
-                            MaximumWidthRequest="420">
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer
-                                Command="{Binding OpenFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
-                                CommandParameter="{Binding .}" />
-                        </Border.GestureRecognizers>
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                            <VerticalStackLayout Spacing="2">
-                                <Label Text="{Binding Display}" TextColor="Black" />
-                                <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding ShowProgress}"
-                                             MinimumWidthRequest="200" />
-                                <Label Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
-                                       FontSize="11" TextColor="Black" />
-                                <Button Text="{Binding [cancelSend], Source={x:Static local:Loc.Instance}}"
-                                        IsVisible="{Binding CanCancel}"
-                                        FontSize="12" Padding="10,0" HeightRequest="32" MinimumHeightRequest="0"
-                                        HorizontalOptions="Start"
-                                        Command="{Binding CancelFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
-                                        CommandParameter="{Binding .}" />
-                                <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
-                            </VerticalStackLayout>
-                            <Button Grid.Column="1" Text="⋮" FontSize="20" TextColor="Gray"
-                                    BackgroundColor="Transparent" Padding="0" CornerRadius="0"
-                                    WidthRequest="32" HeightRequest="32"
-                                    MinimumWidthRequest="0" MinimumHeightRequest="0"
-                                    VerticalOptions="Start"
-                                    IsVisible="{Binding HasMenu}"
-                                    Command="{Binding MessageMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+            </Grid>
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <Label Text="{Binding TransferText}" IsVisible="{Binding HasTransfers}"
+                       FontSize="12" TextColor="Gray" VerticalOptions="Center" />
+                <Button Grid.Column="1" Text="{Binding [clearHistory], Source={x:Static local:Loc.Instance}}"
+                        Command="{Binding ClearHistoryCommand}" IsVisible="{Binding HasMessages}"
+                        HorizontalOptions="End" FontSize="12" TextColor="Gray" BackgroundColor="Transparent"
+                        Padding="8,0" HeightRequest="32" MinimumHeightRequest="0" />
+            </Grid>
+            <CollectionView x:Name="MessagesView" Grid.Row="2" ItemsSource="{Binding Messages}">
+                <CollectionView.EmptyView>
+                    <Label Text="{Binding [noChatSelected], Source={x:Static local:Loc.Instance}}"
+                           TextColor="Gray" HorizontalTextAlignment="Center" VerticalOptions="Center" Margin="24" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="4" Padding="10,6" Stroke="Transparent" StrokeShape="RoundRectangle 12"
+                                HorizontalOptions="{Binding Align}" BackgroundColor="{Binding Bubble}"
+                                MaximumWidthRequest="420">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding OpenFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                     CommandParameter="{Binding .}" />
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-        <Grid Grid.Row="4" RowDefinitions="*,Auto" ColumnDefinitions="*,*" ColumnSpacing="6" RowSpacing="6"
-              IsVisible="{Binding ShowLog}" BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
-            <Editor Grid.ColumnSpan="2" Text="{Binding LogText}" IsReadOnly="True" FontSize="11" />
-            <Button Grid.Row="1" Text="{Binding [copy], Source={x:Static local:Loc.Instance}}" Command="{Binding CopyLogCommand}" />
-            <Button Grid.Row="1" Grid.Column="1" Text="{Binding [clear], Source={x:Static local:Loc.Instance}}" Command="{Binding ClearLogCommand}" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="{Binding SenderName}" IsVisible="{Binding HasSender}"
+                                           FontSize="11" FontAttributes="Bold" TextColor="#1B3FCF" />
+                                    <Label Text="{Binding Display}" TextColor="Black" />
+                                    <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding ShowProgress}"
+                                                 MinimumWidthRequest="200" />
+                                    <Label Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
+                                           FontSize="11" TextColor="Black" />
+                                    <Button Text="{Binding [cancelSend], Source={x:Static local:Loc.Instance}}"
+                                            IsVisible="{Binding CanCancel}"
+                                            FontSize="12" Padding="10,0" HeightRequest="32" MinimumHeightRequest="0"
+                                            HorizontalOptions="Start"
+                                            Command="{Binding CancelFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                            CommandParameter="{Binding .}" />
+                                    <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1" Text="⋮" FontSize="20" TextColor="Gray"
+                                        BackgroundColor="Transparent" Padding="0" CornerRadius="0"
+                                        WidthRequest="32" HeightRequest="32"
+                                        MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                        VerticalOptions="Start"
+                                        IsVisible="{Binding HasMenu}"
+                                        Command="{Binding MessageMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                        CommandParameter="{Binding .}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+            <Grid Grid.Row="2" RowDefinitions="*,Auto" ColumnDefinitions="*,*" ColumnSpacing="6" RowSpacing="6"
+                  IsVisible="{Binding ShowLog}" BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
+                <Editor Grid.ColumnSpan="2" Text="{Binding LogText}" IsReadOnly="True" FontSize="11" />
+                <Button Grid.Row="1" Text="{Binding [copy], Source={x:Static local:Loc.Instance}}" Command="{Binding CopyLogCommand}" />
+                <Button Grid.Row="1" Grid.Column="1" Text="{Binding [clear], Source={x:Static local:Loc.Instance}}" Command="{Binding ClearLogCommand}" />
+            </Grid>
+            <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                <Button Text="📎" Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />
+                <Entry Grid.Column="1" Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
+                       Placeholder="{Binding DraftPlaceholder}" />
+                <Button Grid.Column="2" Text="{Binding [send], Source={x:Static local:Loc.Instance}}"
+                        Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
+            </Grid>
         </Grid>
-        <Grid Grid.Row="5" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-            <Button Text="📎" Command="{Binding AttachCommand}" IsEnabled="{Binding IsConnected}" />
-            <Entry Grid.Column="1" Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
-                   Placeholder="{Binding [type], Source={x:Static local:Loc.Instance}}" />
-            <Button Grid.Column="2" Text="{Binding [send], Source={x:Static local:Loc.Instance}}"
-                    Command="{Binding SendCommand}" IsEnabled="{Binding IsConnected}" />
+
+        <BoxView x:Name="Scrim" Color="Black" Opacity="0.45" IsVisible="{Binding IsDrawerOpen}">
+            <BoxView.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseDrawerCommand}" />
+            </BoxView.GestureRecognizers>
+        </BoxView>
+
+        <Grid x:Name="Drawer" HorizontalOptions="Start" WidthRequest="320" TranslationX="-344"
+              BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
+            <Grid RowDefinitions="Auto,*" Padding="12,12,12,0" RowSpacing="8"
+                  FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                    <Label Text="BtChat" FontAttributes="Bold" FontSize="20" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
+                            Command="{Binding ToggleLanguageCommand}" />
+                    <Button Grid.Column="2" Text="✕" Command="{Binding CloseDrawerCommand}" />
+                </Grid>
+                <ScrollView Grid.Row="1">
+                    <VerticalStackLayout Spacing="10" Padding="0,0,0,24">
+                        <Label Text="{Binding [myName], Source={x:Static local:Loc.Instance}}" FontSize="12" TextColor="Gray" />
+                        <Entry Text="{Binding MyName}" MaxLength="40" />
+                        <Label Text="{Binding [myNameHint], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" />
+
+                        <Label Text="{Binding [chats], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" Margin="0,8,0,0" />
+                        <Label Text="{Binding [noChats], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasNoChats}"
+                               FontSize="12" TextColor="Gray" />
+                        <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding Conversations}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8,6" Stroke="Transparent" StrokeShape="RoundRectangle 10"
+                                            BackgroundColor="{Binding RowColor}">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding OpenChatCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                                            <Border WidthRequest="40" HeightRequest="40" StrokeShape="RoundRectangle 20"
+                                                    BackgroundColor="#3B82F6" Stroke="Transparent">
+                                                <Label Text="{Binding Initial}" TextColor="White" FontAttributes="Bold"
+                                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                                <Label Text="{Binding Name}" FontAttributes="Bold" LineBreakMode="TailTruncation" MaxLines="1" />
+                                                <Label Text="{Binding Preview}" FontSize="12" TextColor="Gray"
+                                                       LineBreakMode="TailTruncation" MaxLines="1" />
+                                            </VerticalStackLayout>
+                                            <HorizontalStackLayout Grid.Column="2" Spacing="6" VerticalOptions="Center">
+                                                <Border IsVisible="{Binding HasUnread}" BackgroundColor="#EF4444" Stroke="Transparent"
+                                                        StrokeShape="RoundRectangle 10" Padding="6,1" VerticalOptions="Center">
+                                                    <Label Text="{Binding UnreadText}" TextColor="White" FontSize="11" FontAttributes="Bold" />
+                                                </Border>
+                                                <Label Text="●" TextColor="#22C55E" IsVisible="{Binding IsLinked}" VerticalOptions="Center" />
+                                            </HorizontalStackLayout>
+                                            <Button Grid.Column="3" Text="⋮" FontSize="20" TextColor="Gray"
+                                                    BackgroundColor="Transparent" Padding="0" CornerRadius="0"
+                                                    WidthRequest="32" HeightRequest="32"
+                                                    MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                                    Command="{Binding ChatMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                    CommandParameter="{Binding .}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+
+                        <BoxView HeightRequest="1" Color="Gray" Opacity="0.3" Margin="0,8,0,0" />
+                        <Label Text="{Binding [connSettings], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" />
+                        <Picker Title="{Binding [mode], Source={x:Static local:Loc.Instance}}"
+                                SelectedIndex="{Binding ModeIndex}">
+                            <Picker.ItemsSource>
+                                <x:Array Type="{x:Type x:String}">
+                                    <x:String>Bluetooth</x:String>
+                                    <x:String>Wi-Fi / IP</x:String>
+                                </x:Array>
+                            </Picker.ItemsSource>
+                        </Picker>
+                        <Grid>
+                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsBluetoothMode}">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
+                                            SelectedItem="{Binding SelectedDevice}"
+                                            Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
+                                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding RefreshCommand}" />
+                                </Grid>
+                                <Grid>
+                                    <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding ConnectCommand}" IsVisible="{Binding IsNotLinked}" />
+                                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsLanMode}">
+                                <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
+                                <Grid>
+                                    <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding ConnectLanCommand}" IsVisible="{Binding IsNotLinked}" />
+                                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6"
+                                      IsVisible="{Binding IsNotLinked}">
+                                    <Button Text="{Binding [search], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding SearchDevicesCommand}" IsEnabled="{Binding IsNotSearching}" />
+                                    <Button Grid.Column="1" Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding ShowQrCommand}" />
+                                    <Button Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding [scanQr], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding ScanQrCommand}" IsVisible="{Binding CanScanQr}" />
+                                </Grid>
+                                <Label Text="{Binding SearchText}" IsVisible="{Binding HasSearchText}" FontSize="12" TextColor="Gray" />
+                                <Label Text="{Binding [foundHeader], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasFound}"
+                                       FontSize="12" TextColor="Gray" />
+                                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding FoundDevices}"
+                                                     IsVisible="{Binding IsNotLinked}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Text="{Binding Display}"
+                                                    Command="{Binding ConnectFoundCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                    CommandParameter="{Binding .}" />
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Label Text="{Binding [concurrentFiles], Source={x:Static local:Loc.Instance}}"
+                                           VerticalOptions="Center" />
+                                    <Switch Grid.Column="1" IsToggled="{Binding ConcurrentFiles}" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
+                                        <Label.FormattedText>
+                                            <FormattedString>
+                                                <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
+                                                <Span Text=" " />
+                                                <Span Text="{Binding LocalAddresses}" FontAttributes="Bold" />
+                                            </FormattedString>
+                                        </Label.FormattedText>
+                                    </Label>
+                                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding RefreshAddressesCommand}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                            <Button Text="{Binding [battery], Source={x:Static local:Loc.Instance}}"
+                                    Command="{Binding BatterySettingsCommand}" IsVisible="{Binding CanOpenBatterySettings}" />
+                            <Button Grid.Column="1" Text="{Binding [log], Source={x:Static local:Loc.Instance}}"
+                                    Command="{Binding ToggleLogCommand}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Grid>
         </Grid>
     </Grid>
 </ContentPage>

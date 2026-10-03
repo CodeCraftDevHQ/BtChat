@@ -73,6 +73,18 @@ public sealed class Loc : INotifyPropertyChanged
         ["log"] = ("لاگ", "Log"),
         ["copy"] = ("کپی همه", "Copy all"),
         ["clear"] = ("پاک کردن", "Clear"),
+        ["chats"] = ("چت‌ها", "Chats"),
+        ["connSettings"] = ("تنظیمات اتصال", "Connection settings"),
+        ["myName"] = ("نام این دستگاه", "This device's name"),
+        ["myNameHint"] = ("این نام در اولین اتصال به دستگاه مقابل معرفی می‌شود و کنار پیام‌ها و پوشه فایل‌ها می‌آید", "Introduced to the other device on connect; shown beside messages and used for the files folder"),
+        ["noChats"] = ("هنوز چتی نیست؛ به یک دستگاه وصل شوید تا چت آن اینجا ساخته شود", "No chats yet; connect to a device and its chat appears here"),
+        ["noChatSelected"] = ("از منوی ☰ به یک دستگاه وصل شوید یا یک چت را انتخاب کنید", "Use the ☰ menu to connect to a device or pick a chat"),
+        ["unknownDevice"] = ("دستگاه ناشناس", "Unknown device"),
+        ["oldChat"] = ("پیام‌های قبلی", "Earlier messages"),
+        ["notLinkedHere"] = ("برای ارسال پیام، به این دستگاه وصل شوید", "Connect to this device to send messages"),
+        ["deleteChat"] = ("حذف چت", "Delete chat"),
+        ["deleteChatAsk"] = ("این چت و همه پیام‌هایش از برنامه حذف می‌شود. فایل‌های ذخیره‌شده روی دستگاه پاک نمی‌شوند.", "This chat and all its messages will be removed from the app. Files saved on this device are not deleted."),
+        ["chatInUse"] = ("چت دستگاه متصل را نمی‌توان حذف کرد؛ اول اتصال را قطع کنید", "Cannot delete the chat of the connected device; disconnect first"),
         ["btoff"] = ("بلوتوث خاموش است یا دسترسی داده نشده", "Bluetooth is off or permission denied")
     };
 

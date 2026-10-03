@@ -32,16 +32,16 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
         AppLog.Write("FILES", $"storage permission={status}");
     }
 
-    public Task<ReceivedFile> CreateAsync(string fileName, CancellationToken ct) =>
-        Task.FromResult(OperatingSystem.IsAndroidVersionAtLeast(29) ? CreateWithMediaStore(fileName) : CreateLegacy(fileName));
+    public Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct) =>
+        Task.FromResult(OperatingSystem.IsAndroidVersionAtLeast(29) ? CreateWithMediaStore(folder, fileName) : CreateLegacy(folder, fileName));
 
-    static ReceivedFile CreateWithMediaStore(string fileName)
+    static ReceivedFile CreateWithMediaStore(string folder, string fileName)
     {
         var resolver = Ctx.ContentResolver!;
         var values = new ContentValues();
         values.Put(MediaStore.IMediaColumns.DisplayName, fileName);
         values.Put(MediaStore.IMediaColumns.MimeType, GetMime(fileName));
-        values.Put(MediaStore.IMediaColumns.RelativePath, Android.OS.Environment.DirectoryDownloads + "/" + FolderName);
+        values.Put(MediaStore.IMediaColumns.RelativePath, Android.OS.Environment.DirectoryDownloads + "/" + FolderName + "/" + folder);
         values.Put(MediaStore.IMediaColumns.IsPending, 1);
         var uri = resolver.Insert(MediaStore.Downloads.ExternalContentUri!, values)
                   ?? throw new IOException("MediaStore insert failed");
@@ -72,10 +72,10 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
     }
 
 #pragma warning disable CA1422
-    static ReceivedFile CreateLegacy(string fileName)
+    static ReceivedFile CreateLegacy(string folder, string fileName)
     {
         var root = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDownloads)!.AbsolutePath;
-        var dir = Path.Combine(root, FolderName);
+        var dir = Path.Combine(root, FolderName, folder);
         Directory.CreateDirectory(dir);
         var baseName = Path.GetFileNameWithoutExtension(fileName);
         var ext = Path.GetExtension(fileName);
@@ -154,9 +154,37 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
         }
     }
 
+#pragma warning disable CA1422
+    static string? FolderOf(string location)
+    {
+        try
+        {
+            if (IsContentUri(location))
+            {
+                using var cursor = Ctx.ContentResolver!.Query(AndroidUri.Parse(location)!, new[] { MediaStore.IMediaColumns.RelativePath }, null, null, null);
+                if (cursor != null && cursor.MoveToFirst())
+                {
+                    var relativePath = cursor.GetString(0)?.Trim('/');
+                    return string.IsNullOrEmpty(relativePath) ? null : relativePath;
+                }
+                return null;
+            }
+            var dir = Path.GetDirectoryName(location);
+            var downloads = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDownloads)!.AbsolutePath;
+            if (dir != null && dir.StartsWith(downloads, StringComparison.Ordinal))
+                return Android.OS.Environment.DirectoryDownloads + dir[downloads.Length..].Replace('\\', '/');
+        }
+        catch
+        {
+        }
+        return null;
+    }
+#pragma warning restore CA1422
+
     public Task ShowInFolderAsync(string location)
     {
-        var folderUri = DocumentsContract.BuildDocumentUri(ExternalStorageAuthority, "primary:" + Android.OS.Environment.DirectoryDownloads + "/" + FolderName);
+        var relative = FolderOf(location) ?? Android.OS.Environment.DirectoryDownloads + "/" + FolderName;
+        var folderUri = DocumentsContract.BuildDocumentUri(ExternalStorageAuthority, "primary:" + relative);
         var view = new Intent(Intent.ActionView);
         view.SetDataAndType(folderUri, DocumentsContract.Document.MimeTypeDir);
         view.AddFlags(ActivityFlags.NewTask | ActivityFlags.GrantReadUriPermission);

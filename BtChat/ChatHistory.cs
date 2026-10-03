@@ -11,6 +11,7 @@ public sealed class StoredMessage
     public string? Location { get; set; }
     public DateTime Time { get; set; }
     public string? FailKey { get; set; }
+    public string SenderName { get; set; } = "";
 
     public static StoredMessage From(ChatMessage m) => new()
     {
@@ -19,10 +20,19 @@ public sealed class StoredMessage
         IsFile = m.IsFile,
         Location = m.Location,
         Time = m.Time,
-        FailKey = m.FailKey
+        FailKey = m.FailKey,
+        SenderName = m.SenderName
     };
 }
 
+public sealed class StoredChat
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public List<StoredMessage> Messages { get; set; } = new();
+}
+
+[JsonSerializable(typeof(List<StoredChat>))]
 [JsonSerializable(typeof(List<StoredMessage>))]
 internal partial class HistoryJsonContext : JsonSerializerContext
 {
@@ -30,48 +40,69 @@ internal partial class HistoryJsonContext : JsonSerializerContext
 
 public static class ChatHistory
 {
+    public const string LegacyId = "legacy";
+
     static readonly object gate = new();
     static long requested;
     static long written;
 
-    static string FilePath => System.IO.Path.Combine(FileSystem.AppDataDirectory, "history.json");
+    static string ChatsPath => System.IO.Path.Combine(FileSystem.AppDataDirectory, "chats.json");
+    static string LegacyPath => System.IO.Path.Combine(FileSystem.AppDataDirectory, "history.json");
 
-    public static List<ChatMessage> Load()
+    public static List<Conversation> Load()
     {
         try
         {
-            var path = FilePath;
-            if (!File.Exists(path)) return new();
-            var stored = JsonSerializer.Deserialize(File.ReadAllText(path), HistoryJsonContext.Default.ListStoredMessage);
-            var list = stored?.Select(ChatMessage.Restore).ToList() ?? new();
-            AppLog.Write("HISTORY", $"loaded {list.Count} messages");
-            return list;
+            if (File.Exists(ChatsPath))
+            {
+                var stored = JsonSerializer.Deserialize(File.ReadAllText(ChatsPath), HistoryJsonContext.Default.ListStoredChat) ?? new();
+                var chats = stored.Select(Restore).ToList();
+                AppLog.Write("HISTORY", $"loaded {chats.Count} chats");
+                return chats;
+            }
+            if (File.Exists(LegacyPath))
+            {
+                var old = JsonSerializer.Deserialize(File.ReadAllText(LegacyPath), HistoryJsonContext.Default.ListStoredMessage) ?? new();
+                AppLog.Write("HISTORY", $"migrating {old.Count} old messages");
+                if (old.Count == 0) return new();
+                var chat = Restore(new StoredChat { Id = LegacyId, Name = Loc.Instance["oldChat"], Messages = old });
+                return new() { chat };
+            }
         }
         catch (Exception ex)
         {
             AppLog.Error("HISTORY", "load failed", ex);
-            return new();
         }
+        return new();
     }
 
-    // Call on the UI thread. Messages that are still transferring are not saved;
-    // they are saved when they finish (see ChatMessage.Finished).
-    public static void Save(IEnumerable<ChatMessage> messages)
+    static Conversation Restore(StoredChat stored)
     {
-        var snapshot = messages.Where(m => !m.ShowProgress).Select(StoredMessage.From).ToList();
-        var path = FilePath;
+        var chat = new Conversation(stored.Id, stored.Name);
+        foreach (var m in stored.Messages) chat.Messages.Add(ChatMessage.Restore(m));
+        return chat;
+    }
+
+    public static void Save(IEnumerable<Conversation> chats)
+    {
+        var snapshot = chats.Select(c => new StoredChat
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Messages = c.Messages.Where(m => !m.ShowProgress).Select(StoredMessage.From).ToList()
+        }).ToList();
+        var path = ChatsPath;
         var ticket = Interlocked.Increment(ref requested);
         Task.Run(() =>
         {
             lock (gate)
             {
-                // A newer snapshot was already written: skip this stale one.
                 if (ticket < written) return;
                 written = ticket;
                 try
                 {
                     var tmp = path + ".tmp";
-                    File.WriteAllText(tmp, JsonSerializer.Serialize(snapshot, HistoryJsonContext.Default.ListStoredMessage));
+                    File.WriteAllText(tmp, JsonSerializer.Serialize(snapshot, HistoryJsonContext.Default.ListStoredChat));
                     File.Move(tmp, path, true);
                 }
                 catch (Exception ex)

@@ -7,6 +7,7 @@ namespace BtChat;
 public sealed class ChatSession : IDisposable
 {
     const byte FrameText = 1;
+    const byte FrameHello = 2;
     const byte FramePing = 5;
     // File frames carry a 4-byte file id first, so several files can be in flight at once.
     const byte FrameFileOffer = 8;  // [id][size i64][name]  announces a queued file
@@ -24,6 +25,10 @@ public sealed class ChatSession : IDisposable
     int framesRead;
 
     public event Action<ChatMessage>? MessageReceived;
+    public event Action? PeerIdentified;
+
+    public string? PeerId { get; private set; }
+    public string? PeerName { get; private set; }
 
     public ChatSession(Stream stream, IReceivedFileStore store, string name)
     {
@@ -36,6 +41,12 @@ public sealed class ChatSession : IDisposable
     {
         AppLog.Write("SESSION", $"{name} text tx chars={text.Length}");
         return WriteFrameAsync(FrameText, Encoding.UTF8.GetBytes(text), ct);
+    }
+
+    public Task SendHelloAsync(CancellationToken ct = default)
+    {
+        AppLog.Write("SESSION", $"{name} hello tx");
+        return WriteFrameAsync(FrameHello, Encoding.UTF8.GetBytes(LocalDevice.Id + "\n" + LocalDevice.Name), ct);
     }
 
     public uint NewFileId() => (uint)Interlocked.Increment(ref nextFileId);
@@ -113,6 +124,7 @@ public sealed class ChatSession : IDisposable
         var incoming = new Dictionary<uint, IncomingFile>();
         try
         {
+            await SendHelloAsync(ct);
             while (true)
             {
                 await stream.ReadExactlyAsync(header, ct);
@@ -127,12 +139,27 @@ public sealed class ChatSession : IDisposable
                 var type = header[0];
                 switch (type)
                 {
+                    case FrameHello:
+                    {
+                        var text = Encoding.UTF8.GetString(payload);
+                        var split = text.IndexOf('\n');
+                        if (split <= 0) break;
+                        var peerId = text[..split].Trim();
+                        var peerName = LocalDevice.Clean(text[(split + 1)..]);
+                        if (peerId.Length == 0 || peerId.Length > 64) break;
+                        if (peerName.Length == 0) peerName = "Unknown";
+                        PeerId = peerId;
+                        PeerName = peerName;
+                        AppLog.Write("SESSION", $"{name} hello rx id={peerId} name={peerName}");
+                        PeerIdentified?.Invoke();
+                        break;
+                    }
                     case FramePing:
                         AppLog.Write("SESSION", $"{name} ping rx");
                         break;
                     case FrameText:
                         AppLog.Write("SESSION", $"{name} text rx bytes={length}");
-                        MessageReceived?.Invoke(new ChatMessage { Text = Encoding.UTF8.GetString(payload) });
+                        MessageReceived?.Invoke(new ChatMessage { Text = Encoding.UTF8.GetString(payload), SenderName = PeerName ?? "" });
                         break;
                     case FrameFileOffer:
                     {
@@ -146,7 +173,7 @@ public sealed class ChatSession : IDisposable
                             await AbortFileAsync(stale.File);
                             stale.Message.Fail();
                         }
-                        var message = new ChatMessage { Text = fileName, IsFile = true };
+                        var message = new ChatMessage { Text = fileName, IsFile = true, SenderName = PeerName ?? "" };
                         message.SetQueued("fileWaiting");
                         incoming[id] = new IncomingFile(fileName, size, message);
                         AppLog.Write("SESSION", $"{name} file rx offer id={id} {fileName} size={size}");
@@ -156,7 +183,7 @@ public sealed class ChatSession : IDisposable
                     case FrameFileBegin:
                     {
                         if (payload.Length < 4 || !incoming.TryGetValue(BinaryPrimitives.ReadUInt32LittleEndian(payload), out var item)) break;
-                        item.File = await store.CreateAsync(item.Name, ct);
+                        item.File = await store.CreateAsync(LocalDevice.SafeFolder(PeerName), item.Name, ct);
                         AppLog.Write("SESSION", $"{name} file rx start {item.File.Name}");
                         item.Message.Begin(item.File.Name, item.File.Location, item.Expected);
                         break;
