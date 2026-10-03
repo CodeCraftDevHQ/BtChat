@@ -7,16 +7,16 @@ namespace BtChat;
 
 public sealed class AndroidKeepAlive : IKeepAlive
 {
-    readonly IPermissionGate gate;
+    readonly IPermissionGate permissions;
     readonly object gate = new();
     bool running;
     string? lastText;
 
     public event Action? ExitRequested;
 
-    public AndroidKeepAlive(IPermissionGate gate)
+    public AndroidKeepAlive(IPermissionGate permissions)
     {
-        this.gate = gate;
+        this.permissions = permissions;
         ConnectionService.TaskRemoved += () => ExitRequested?.Invoke();
     }
 
@@ -66,7 +66,7 @@ public sealed class AndroidKeepAlive : IKeepAlive
         // Android 13+ hides the foreground-service notification until this is granted.
         try
         {
-            var granted = await gate.EnsureAsync(PermissionKind.Notifications);
+            var granted = await permissions.EnsureAsync(PermissionKind.Notifications);
             AppLog.Write("KEEPALIVE", $"notification permission granted={granted}");
         }
         catch (Exception ex)
