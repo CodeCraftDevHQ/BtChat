@@ -8,7 +8,9 @@ public static class Protocol
 {
     public const string ServiceId = "8f3c2a10-5b7e-4d1a-9c64-2e7d0b1a4f33";
     public const int MaxFrame = 1 << 20;
-    public const int ChunkSize = 32 * 1024;
+    public const int TcpChunkSize = 128 * 1024;
+    public const int BluetoothChunkSize = 32 * 1024;
+    public const int AcceptTimeoutSeconds = 30;
     public const int PingIntervalMs = 5000;
     public const int PingTimeoutMs = 20000;
 }
@@ -33,6 +35,10 @@ public class ChatMessage : ObservableObject
     public bool IsReceivedFile => IsFile && !IsMine;
     public bool HasMenu => IsText || (IsFile && !ShowProgress);
     public bool CanCancel => IsMine && IsFile && ShowProgress;
+    // Identifies one file transfer across connections (the same key is used when it is offered again).
+    public Guid TransferKey { get; set; }
+    // A failed file can be tried again: the sender sends it again, the receiver asks the sender to do so.
+    public bool CanRetry => IsFile && failed && !showProgress && (IsMine ? location != null : TransferKey != Guid.Empty);
     public string? Location
     {
         get => location;
@@ -144,6 +150,7 @@ public class ChatMessage : ObservableObject
 
     public CancellationTokenSource? Cts { get; set; }
     public event Action? Finished;
+    public event Action? Started;
 
     double progress;
     string? failKey;
@@ -152,6 +159,7 @@ public class ChatMessage : ObservableObject
     string statusText = "";
     long lastKey = -1;
     long lastDone;
+    long partialBytes;
     long startTicks;
     long sizeBytes;
     double durationSeconds;
@@ -166,6 +174,7 @@ public class ChatMessage : ObservableObject
             {
                 OnPropertyChanged(nameof(HasMenu));
                 OnPropertyChanged(nameof(CanCancel));
+                OnPropertyChanged(nameof(CanRetry));
                 NotifyMedia();
             }
         }
@@ -178,12 +187,15 @@ public class ChatMessage : ObservableObject
             if (SetProperty(ref failed, value))
             {
                 OnPropertyChanged(nameof(HasMenu));
+                OnPropertyChanged(nameof(CanRetry));
                 NotifyMedia();
             }
         }
     }
     public string? FailKey => failKey;
     public long SizeBytes => sizeBytes;
+    public long PartialBytes => partialBytes;
+    public long LastDone => lastDone;
     public double DurationSeconds => durationSeconds;
 
     public string InfoText
@@ -258,17 +270,45 @@ public class ChatMessage : ObservableObject
     });
 
     // Receiver: the real file now exists, so the final name and location are known.
-    public void Begin(string name, string fileLocation, long expected)
+    // startAt > 0: a partly received file is continued from that byte.
+    public void Begin(string name, string fileLocation, long expected, long startAt = 0)
     {
         OnUi(() =>
         {
             Text = name;
             Location = fileLocation;
+            Started?.Invoke();
         });
         lastKey = -1;
         MarkStart(expected);
-        Report(0, expected);
+        Report(startAt, expected);
     }
+
+    // Receiver: remember the announced size, so it is known even if the transfer never starts.
+    public void SetOffered(long size)
+    {
+        if (size > 0) sizeBytes = size;
+    }
+
+    // A failed transfer is going to be tried again: back to the waiting state (progress kept for the status text).
+    public void Revive(string queuedKey = "queued") => OnUi(() =>
+    {
+        failKey = null;
+        lastDone = partialBytes;
+        Failed = false;
+        SetQueued(queuedKey);
+    });
+
+    // What was received so far is gone (cancelled, deleted or outdated): the next try starts from zero.
+    public void DropPartial() => OnUi(() =>
+    {
+        partialBytes = 0;
+        lastDone = 0;
+        if (!IsMine) Location = null;
+    });
+
+    // A short remark in the status line of a failed file (for example "connect first").
+    public void ShowNote(string key) => OnUi(() => StatusText = "⚠ " + Loc.Instance[key]);
 
     public void MarkStart(long size)
     {
@@ -291,14 +331,25 @@ public class ChatMessage : ObservableObject
         Finished?.Invoke();
     });
 
-    public void Fail(string key = "fileFailed") => OnUi(() =>
+    // keepPartial: the bytes already transferred stay valid (the receiver keeps its partial file).
+    public void Fail(string key = "fileFailed", bool keepPartial = true) => OnUi(() =>
     {
         failKey = key;
+        partialBytes = keepPartial ? lastDone : 0;
+        if (!keepPartial && !IsMine) Location = null;
         Failed = true;
         ShowProgress = false;
-        StatusText = "⚠ " + Loc.Instance[key];
+        StatusText = FailText();
         Finished?.Invoke();
     });
+
+    string FailText()
+    {
+        var text = "⚠ " + Loc.Instance[failKey ?? "fileFailed"];
+        if (IsFile && partialBytes > 0 && sizeBytes > partialBytes)
+            text += $" ({partialBytes * 100 / sizeBytes}%)";
+        return text;
+    }
 
     public static ChatMessage Restore(StoredMessage s)
     {
@@ -311,13 +362,15 @@ public class ChatMessage : ObservableObject
             Time = s.Time,
             SenderName = s.SenderName,
             sizeBytes = s.SizeBytes,
-            durationSeconds = s.DurationSeconds
+            durationSeconds = s.DurationSeconds,
+            partialBytes = s.PartialBytes,
+            TransferKey = Guid.TryParse(s.TransferKey, out var key) ? key : Guid.Empty
         };
         if (s.IsFile && s.FailKey != null)
         {
             m.failKey = s.FailKey;
             m.failed = true;
-            m.statusText = "⚠ " + Loc.Instance[s.FailKey];
+            m.statusText = m.FailText();
         }
         return m;
     }
@@ -362,6 +415,7 @@ public sealed class ReceivedFile
     public required string Location { get; init; }
     public required Func<Task> Complete { get; init; }
     public required Func<Task> Abort { get; init; }
+    public long ExistingLength { get; init; }
 }
 
 public interface IReceivedFileStore
@@ -370,6 +424,8 @@ public interface IReceivedFileStore
     Task<Stream> OpenReadAsync(string location);
     Task<byte[]?> GetVideoThumbnailAsync(string location);
     Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct);
+    // Reopens a partly received file for appending (ExistingLength = bytes already there). Null if it is gone.
+    Task<ReceivedFile?> OpenForResumeAsync(string location, CancellationToken ct);
     Task OpenAsync(string location, string name);
     Task ShowInFolderAsync(string location);
     Task ShareAsync(string location, string name);

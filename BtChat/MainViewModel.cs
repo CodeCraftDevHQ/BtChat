@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject
     bool btStarted;
     int logRefreshPending;
     readonly object sendLock = new();
+    readonly ResumeRegistry resumes = new();
     readonly List<PendingSend> sendQueue = new();
     int activeSends;
     const int MaxParallelSends = 4;
@@ -321,6 +322,12 @@ public partial class MainViewModel : ObservableObject
         {
             WatchChat(chat);
             Conversations.Add(chat);
+            // Received files that stopped half-way can still be continued, also after an app restart.
+            foreach (var m in chat.Messages)
+            {
+                if (m.IsMine || !m.IsFile || !m.Failed || m.TransferKey == Guid.Empty) continue;
+                resumes.Set(new FailedReceive { Key = m.TransferKey, Message = m, Expected = m.SizeBytes, Location = m.Location });
+            }
         }
         var lastId = Preferences.Default.Get("lastChat", "");
         CurrentChat = Conversations.FirstOrDefault(c => c.Id == lastId) ?? Conversations.FirstOrDefault();
@@ -527,7 +534,7 @@ public partial class MainViewModel : ObservableObject
                 stream.Dispose();
                 return;
             }
-            current = new ChatSession(stream, files, name);
+            current = new ChatSession(stream, files, name, resumes);
             session = current;
         }
         AppLog.Write("VM", $"session started {name} inbound={inbound}");
@@ -553,6 +560,7 @@ public partial class MainViewModel : ObservableObject
             NotifyComposer();
             SaveHistory();
         });
+        current.RetryRequested += key => MainThread.BeginInvokeOnMainThread(() => _ = HandleRetryRequestAsync(current, key));
         current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() =>
             AddMessage(chat ?? GetOrCreateChat(UnknownId, Loc.Instance["unknownDevice"]), m));
         IsConnected = true;
@@ -864,6 +872,7 @@ public partial class MainViewModel : ObservableObject
         public required PickedFile File { get; init; }
         public required ChatMessage Message { get; init; }
         public required long Size { get; init; }
+        public required Guid Key { get; init; }
         public CancellationTokenSource Cts { get; } = new();
     }
 
@@ -894,15 +903,17 @@ public partial class MainViewModel : ObservableObject
                 Id = s.NewFileId(),
                 File = file,
                 Size = size,
+                Key = Guid.NewGuid(),
                 Message = new ChatMessage { Text = file.Name, IsMine = true, IsFile = true, Location = file.Location, SenderName = LocalDevice.Name }
             };
+            item.Message.TransferKey = item.Key;
             item.Message.Cts = item.Cts;
             item.Message.SetQueued();
             AddMessage(chat, item.Message);
             lock (sendLock) sendQueue.Add(item);
             try
             {
-                await s.OfferFileAsync(item.Id, file.Name, size);
+                await s.OfferFileAsync(item.Id, file.Name, size, item.Key);
             }
             catch (Exception ex)
             {
@@ -935,6 +946,8 @@ public partial class MainViewModel : ObservableObject
     async Task RunSendAsync(PendingSend item)
     {
         var message = item.Message;
+        // Saved now, so a transfer that is cut off (even by the app being killed) can be continued later.
+        MainThread.BeginInvokeOnMainThread(SaveHistory);
         try
         {
             await using var source = await item.File.Open();
@@ -989,6 +1002,102 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    async Task RetryFileAsync(ChatMessage? message)
+    {
+        if (message == null || !message.CanRetry) return;
+        AppLog.Write("UI", $"retry pressed for {message.Text} mine={message.IsMine}");
+        var s = session;
+        var chat = ChatOf(message);
+        // Only possible while connected to the same device the file was exchanged with.
+        if (s == null || chat == null || !ReferenceEquals(chat, linkedChat))
+        {
+            message.ShowNote("retryNeedsConnection");
+            return;
+        }
+        if (message.IsMine)
+        {
+            await StartRetryAsync(s, message);
+            return;
+        }
+        try
+        {
+            message.ShowNote("retryRequested");
+            await s.RequestRetryAsync(message.TransferKey);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "retry request failed", ex);
+            message.ShowNote("failed");
+        }
+    }
+
+    // Sends a failed file again. The receiver continues from the bytes it already has (or starts over if it has none).
+    async Task<bool> StartRetryAsync(ChatSession s, ChatMessage message, bool peerAsked = false)
+    {
+        var location = message.Location;
+        if (location == null) return false;
+        long size = message.SizeBytes > 0 ? message.SizeBytes : -1;
+        try
+        {
+            await using var probe = await fileSource.OpenAsync(location);
+            if (probe.CanSeek) size = probe.Length;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", $"retry: cannot open {message.Text}", ex);
+            message.ShowNote("fileMissing");
+            return false;
+        }
+        // The button may have been pressed twice while the file was being opened.
+        // peerAsked: the other device wants the file again even though here it looked finished.
+        if ((!message.CanRetry && !peerAsked) || message.ShowProgress || !ReferenceEquals(s, session)) return false;
+        if (message.TransferKey == Guid.Empty) message.TransferKey = Guid.NewGuid();
+        var item = new PendingSend
+        {
+            Session = s,
+            Id = s.NewFileId(),
+            File = new PickedFile(message.Text, location, size, () => fileSource.OpenAsync(location)),
+            Size = size,
+            Key = message.TransferKey,
+            Message = message
+        };
+        message.Revive();
+        message.Cts = item.Cts;
+        lock (sendLock) sendQueue.Add(item);
+        try
+        {
+            await s.OfferFileAsync(item.Id, message.Text, size, item.Key);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "retry: offer failed", ex);
+            lock (sendLock) sendQueue.Remove(item);
+            message.Fail();
+            SetStatus("failed");
+            return true;
+        }
+        PumpSends();
+        return true;
+    }
+
+    // The other device asks for a file again (its retry button): find it and send it, or say it is not available.
+    async Task HandleRetryRequestAsync(ChatSession from, Guid key)
+    {
+        var message = linkedChat?.Messages.FirstOrDefault(m => m.IsMine && m.IsFile && m.TransferKey == key);
+        if (message != null && message.ShowProgress) return;
+        var ok = message != null && message.Location != null && ReferenceEquals(from, session) && await StartRetryAsync(from, message, peerAsked: true);
+        if (ok) return;
+        try
+        {
+            await from.DenyRetryAsync(key);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "deny retry failed", ex);
+        }
+    }
+
+    [RelayCommand]
     void CancelFile(ChatMessage? message)
     {
         if (message == null || !message.CanCancel) return;
@@ -1012,6 +1121,7 @@ public partial class MainViewModel : ObservableObject
     void AddMessage(Conversation chat, ChatMessage message)
     {
         message.Finished += SaveHistory;
+        message.Started += SaveHistory;
         message.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ChatMessage.ShowProgress)) NotifyTransfers();
@@ -1038,7 +1148,7 @@ public partial class MainViewModel : ObservableObject
         foreach (var m in chat.Messages.Where(m => !m.ShowProgress).ToList())
         {
             chat.Messages.Remove(m);
-            ReleaseIfUnused(m);
+            ForgetMessage(m);
         }
         SaveHistory();
         AppLog.Write("UI", "chat history cleared");
@@ -1062,8 +1172,21 @@ public partial class MainViewModel : ObservableObject
             }
         }
         ChatOf(message)?.Messages.Remove(message);
-        ReleaseIfUnused(message);
+        ForgetMessage(message);
         SaveHistory();
+    }
+
+    // A message leaves the chat for good: free what belongs to it (saved access, half-received file, resume info).
+    void ForgetMessage(ChatMessage message)
+    {
+        ReleaseIfUnused(message);
+        if (!message.IsReceivedFile) return;
+        resumes.RemoveMessage(message);
+        if (message.Failed && message.Location != null)
+        {
+            var partial = message.Location;
+            _ = SafeAsync("delete partial file", () => files.DeleteAsync(partial));
+        }
     }
 
     // A sent file keeps its saved access only while some chat message still points to it.
@@ -1212,7 +1335,7 @@ public partial class MainViewModel : ObservableObject
         var removed = chat.Messages.ToList();
         var index = Conversations.IndexOf(chat);
         Conversations.Remove(chat);
-        foreach (var m in removed) ReleaseIfUnused(m);
+        foreach (var m in removed) ForgetMessage(m);
         if (ReferenceEquals(chat, CurrentChat))
             CurrentChat = Conversations.Count > 0 ? Conversations[Math.Min(index, Conversations.Count - 1)] : null;
         SaveHistory();

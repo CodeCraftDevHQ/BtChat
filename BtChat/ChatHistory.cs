@@ -14,6 +14,8 @@ public sealed class StoredMessage
     public string SenderName { get; set; } = "";
     public long SizeBytes { get; set; }
     public double DurationSeconds { get; set; }
+    public long PartialBytes { get; set; }
+    public string? TransferKey { get; set; }
 
     public static StoredMessage From(ChatMessage m) => new()
     {
@@ -22,10 +24,13 @@ public sealed class StoredMessage
         IsFile = m.IsFile,
         Location = m.Location,
         Time = m.Time,
-        FailKey = m.FailKey,
+        // A file that is still being transferred when this is saved comes back as "interrupted" after a restart.
+        FailKey = m.FailKey ?? (m.IsFile && m.ShowProgress ? "fileInterrupted" : null),
         SenderName = m.SenderName,
         SizeBytes = m.SizeBytes,
-        DurationSeconds = m.DurationSeconds
+        DurationSeconds = m.DurationSeconds,
+        PartialBytes = m.ShowProgress ? m.LastDone : m.PartialBytes,
+        TransferKey = m.TransferKey == Guid.Empty ? null : m.TransferKey.ToString("N")
     };
 }
 
@@ -95,7 +100,7 @@ public static class ChatHistory
             Id = c.Id,
             Name = c.PeerName,
             Alias = c.Alias,
-            Messages = c.Messages.Where(m => !m.ShowProgress).Select(StoredMessage.From).ToList()
+            Messages = c.Messages.Where(m => !m.ShowProgress || m.IsFile).Select(StoredMessage.From).ToList()
         }).ToList();
         var path = ChatsPath;
         var ticket = Interlocked.Increment(ref requested);

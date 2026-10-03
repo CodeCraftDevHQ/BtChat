@@ -6,6 +6,8 @@ public sealed record PickedFile(string Name, string Location, long Size, Func<Ta
 public interface IFileSource
 {
     Task<IReadOnlyList<PickedFile>> PickAsync();
+    // Opens a file again by its saved location (path or content:// uri), e.g. to send it again.
+    Task<Stream> OpenAsync(string location);
     // Forget the saved access to a file that is no longer shown in the chat.
     void Release(string location);
 }
@@ -29,10 +31,15 @@ public sealed class DefaultFileSource : IFileSource
             {
             }
             var captured = file;
-            list.Add(new PickedFile(file.FileName, file.FullPath, size, () => captured.OpenReadAsync()));
+            list.Add(new PickedFile(file.FileName, file.FullPath, size, () => OpenAsync(captured.FullPath)));
         }
         return list;
     }
+
+    // No read buffering: chunks are big and are read straight into the send buffers.
+    public Task<Stream> OpenAsync(string location) =>
+        Task.FromResult<Stream>(new FileStream(location, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, 1, FileOptions.Asynchronous | FileOptions.SequentialScan));
 
     public void Release(string location)
     {

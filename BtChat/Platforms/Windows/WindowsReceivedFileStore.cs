@@ -87,6 +87,27 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
         }
     }
 
+    public Task<ReceivedFile?> OpenForResumeAsync(string location, CancellationToken ct)
+    {
+        if (!File.Exists(location)) return Task.FromResult<ReceivedFile?>(null);
+        var stream = new FileStream(location, FileMode.Open, FileAccess.Write, FileShare.Read, 4096, FileOptions.Asynchronous);
+        var existing = stream.Length;
+        stream.Seek(0, SeekOrigin.End);
+        return Task.FromResult<ReceivedFile?>(new ReceivedFile
+        {
+            Stream = stream,
+            Name = Path.GetFileName(location),
+            Location = location,
+            ExistingLength = existing,
+            Complete = () => Task.CompletedTask,
+            Abort = () =>
+            {
+                try { File.Delete(location); } catch { }
+                return Task.CompletedTask;
+            }
+        });
+    }
+
     static bool CheckExists(string location, string name)
     {
         if (File.Exists(location)) return true;

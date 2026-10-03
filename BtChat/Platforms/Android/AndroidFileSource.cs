@@ -1,4 +1,5 @@
 using Android.Content;
+using Microsoft.Win32.SafeHandles;
 using AndroidUri = Android.Net.Uri;
 
 namespace BtChat;
@@ -66,14 +67,36 @@ public sealed class AndroidFileSource : IFileSource
             }
             var location = uri.ToString()!;
             AppLog.Write("FILES", $"picked {name} size={size} uri={location}");
-            list.Add(new PickedFile(name, location, size, () =>
-            {
-                var stream = Android.App.Application.Context.ContentResolver!.OpenInputStream(AndroidUri.Parse(location)!)
-                             ?? throw new IOException("cannot open " + location);
-                return Task.FromResult<Stream>(stream);
-            }));
+            list.Add(new PickedFile(name, location, size, () => OpenAsync(location)));
         }
         return list;
+    }
+
+    // Reads through the native file descriptor when the provider gives one: no Java stream in between (faster),
+    // and the file can seek, so a transfer can continue from the middle. Other providers use a normal stream.
+    public Task<Stream> OpenAsync(string location)
+    {
+        if (!location.StartsWith("content://", StringComparison.Ordinal))
+            return Task.FromResult<Stream>(new FileStream(location, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1));
+        var resolver = Android.App.Application.Context.ContentResolver!;
+        var uri = AndroidUri.Parse(location)!;
+        SafeFileHandle? handle = null;
+        try
+        {
+            using var descriptor = resolver.OpenFileDescriptor(uri, "r");
+            if (descriptor != null)
+            {
+                handle = new SafeFileHandle((IntPtr)descriptor.DetachFd(), true);
+                return Task.FromResult<Stream>(new FileStream(handle, FileAccess.Read, 1, false));
+            }
+        }
+        catch (Exception ex)
+        {
+            handle?.Dispose();
+            AppLog.Error("FILES", $"native open failed for {location}, using a stream", ex);
+        }
+        var stream = resolver.OpenInputStream(uri) ?? throw new IOException("cannot open " + location);
+        return Task.FromResult<Stream>(stream);
     }
 
     public void Release(string location)

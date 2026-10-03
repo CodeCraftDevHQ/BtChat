@@ -62,6 +62,12 @@
                                             HorizontalOptions="Start"
                                             Command="{Binding CancelFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                             CommandParameter="{Binding .}" />
+                                    <Button Text="{Binding [retry], Source={x:Static local:Loc.Instance}}"
+                                            IsVisible="{Binding CanRetry}"
+                                            FontSize="12" Padding="10,0" HeightRequest="32" MinimumHeightRequest="0"
+                                            HorizontalOptions="Start"
+                                            Command="{Binding RetryFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                            CommandParameter="{Binding .}" />
                                     <Label Text="{Binding InfoText}" IsVisible="{Binding HasInfo}" FontSize="11" TextColor="#444444" />
                                     <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
                                 </VerticalStackLayout>

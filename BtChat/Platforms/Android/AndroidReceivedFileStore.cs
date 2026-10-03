@@ -3,6 +3,7 @@ using Android.OS;
 using Android.Provider;
 using Android.Webkit;
 using Android.Widget;
+using Microsoft.Win32.SafeHandles;
 using AndroidUri = Android.Net.Uri;
 
 namespace BtChat;
@@ -67,6 +68,32 @@ public sealed class AndroidReceivedFileStore(IPermissionGate gate) : IReceivedFi
     public Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct) =>
         Task.FromResult(OperatingSystem.IsAndroidVersionAtLeast(29) ? CreateWithMediaStore(folder, fileName) : CreateLegacy(folder, fileName));
 
+    // Opens the file behind a content:// uri for writing through a native file descriptor: no Java stream
+    // in between (faster) and it can seek, which continuing a partial file needs. Null if the provider refuses.
+    static FileStream? OpenWriteFd(AndroidUri uri)
+    {
+        SafeFileHandle? handle = null;
+        try
+        {
+            using var descriptor = Ctx.ContentResolver!.OpenFileDescriptor(uri, "rw");
+            if (descriptor == null) return null;
+            handle = new SafeFileHandle((IntPtr)descriptor.DetachFd(), true);
+            return new FileStream(handle, FileAccess.Write, 1, false);
+        }
+        catch (Exception ex)
+        {
+            handle?.Dispose();
+            AppLog.Error("FILES", $"native write open failed for {uri}, using a stream", ex);
+            return null;
+        }
+    }
+
+    static string? DisplayNameOf(AndroidUri uri)
+    {
+        using var cursor = Ctx.ContentResolver!.Query(uri, new[] { MediaStore.IMediaColumns.DisplayName }, null, null, null);
+        return cursor != null && cursor.MoveToFirst() ? cursor.GetString(0) : null;
+    }
+
     static ReceivedFile CreateWithMediaStore(string folder, string fileName)
     {
         var resolver = Ctx.ContentResolver!;
@@ -77,31 +104,79 @@ public sealed class AndroidReceivedFileStore(IPermissionGate gate) : IReceivedFi
         values.Put(MediaStore.IMediaColumns.IsPending, 1);
         var uri = resolver.Insert(MediaStore.Downloads.ExternalContentUri!, values)
                   ?? throw new IOException("MediaStore insert failed");
-        var stream = resolver.OpenOutputStream(uri) ?? throw new IOException("cannot open output stream");
-        var finalName = fileName;
-        using (var cursor = resolver.Query(uri, new[] { MediaStore.IMediaColumns.DisplayName }, null, null, null))
-        {
-            if (cursor != null && cursor.MoveToFirst()) finalName = cursor.GetString(0) ?? fileName;
-        }
-        return new ReceivedFile
-        {
-            Stream = stream,
-            Name = finalName,
-            Location = uri.ToString()!,
-            Complete = () =>
-            {
-                var done = new ContentValues();
-                done.Put(MediaStore.IMediaColumns.IsPending, 0);
-                resolver.Update(uri, done, null, null);
-                return Task.CompletedTask;
-            },
-            Abort = () =>
-            {
-                resolver.Delete(uri, null, null);
-                return Task.CompletedTask;
-            }
-        };
+        Stream? stream = OpenWriteFd(uri);
+        stream ??= resolver.OpenOutputStream(uri);
+        if (stream == null) throw new IOException("cannot open output stream");
+        return MediaStoreFile(resolver, uri, stream, DisplayNameOf(uri) ?? fileName, 0);
     }
+
+    static ReceivedFile MediaStoreFile(ContentResolver resolver, AndroidUri uri, Stream stream, string name, long existing) => new()
+    {
+        Stream = stream,
+        Name = name,
+        Location = uri.ToString()!,
+        ExistingLength = existing,
+        Complete = () =>
+        {
+            var done = new ContentValues();
+            done.Put(MediaStore.IMediaColumns.IsPending, 0);
+            resolver.Update(uri, done, null, null);
+            return Task.CompletedTask;
+        },
+        Abort = () =>
+        {
+            resolver.Delete(uri, null, null);
+            return Task.CompletedTask;
+        }
+    };
+
+    public Task<ReceivedFile?> OpenForResumeAsync(string location, CancellationToken ct) =>
+        Task.FromResult(IsContentUri(location) ? ResumeMediaStore(location) : ResumeLegacy(location));
+
+    static ReceivedFile? ResumeMediaStore(string location)
+    {
+        var uri = AndroidUri.Parse(location)!;
+        var stream = OpenWriteFd(uri);
+        if (stream == null) return null;
+        if (!stream.CanSeek)
+        {
+            stream.Dispose();
+            return null;
+        }
+        var existing = stream.Length;
+        stream.Seek(0, SeekOrigin.End);
+        string? name = null;
+        try { name = DisplayNameOf(uri); }
+        catch (Exception ex) { AppLog.Error("FILES", "display name query failed", ex); }
+        return MediaStoreFile(Ctx.ContentResolver!, uri, stream, name ?? "file", existing);
+    }
+
+    static ReceivedFile? ResumeLegacy(string path)
+    {
+        if (!File.Exists(path)) return null;
+        var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read, 1, FileOptions.Asynchronous);
+        var existing = stream.Length;
+        stream.Seek(0, SeekOrigin.End);
+        return LegacyFile(stream, path, existing);
+    }
+
+    static ReceivedFile LegacyFile(FileStream stream, string path, long existing) => new()
+    {
+        Stream = stream,
+        Name = Path.GetFileName(path),
+        Location = path,
+        ExistingLength = existing,
+        Complete = () =>
+        {
+            Android.Media.MediaScannerConnection.ScanFile(Ctx, new[] { path }, null, null);
+            return Task.CompletedTask;
+        },
+        Abort = () =>
+        {
+            try { File.Delete(path); } catch { }
+            return Task.CompletedTask;
+        }
+    };
 
 #pragma warning disable CA1422
     static ReceivedFile CreateLegacy(string folder, string fileName)
@@ -117,24 +192,8 @@ public sealed class AndroidReceivedFileStore(IPermissionGate gate) : IReceivedFi
         {
             try
             {
-                var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 4096, FileOptions.Asynchronous);
-                var finalPath = path;
-                return new ReceivedFile
-                {
-                    Stream = stream,
-                    Name = Path.GetFileName(finalPath),
-                    Location = finalPath,
-                    Complete = () =>
-                    {
-                        Android.Media.MediaScannerConnection.ScanFile(Ctx, new[] { finalPath }, null, null);
-                        return Task.CompletedTask;
-                    },
-                    Abort = () =>
-                    {
-                        try { File.Delete(finalPath); } catch { }
-                        return Task.CompletedTask;
-                    }
-                };
+                var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 1, FileOptions.Asynchronous);
+                return LegacyFile(stream, path, 0);
             }
             catch (IOException) when (File.Exists(path))
             {
