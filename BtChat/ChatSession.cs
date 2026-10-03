@@ -7,18 +7,19 @@ namespace BtChat;
 public sealed class ChatSession : IDisposable
 {
     const byte FrameText = 1;
-    const byte FrameFileStart = 2;
-    const byte FrameFileChunk = 3;
-    const byte FrameFileEnd = 4;
     const byte FramePing = 5;
-    const byte FrameFileSize = 6; // sent right after FileStart; old peers ignore it
-    const byte FrameFileCancel = 7; // sender aborted the current file; old peers ignore it
+    // File frames carry a 4-byte file id first, so several files can be in flight at once.
+    const byte FrameFileOffer = 8;  // [id][size i64][name]  announces a queued file
+    const byte FrameFileBegin = 9;  // [id]                  the sender starts sending it now
+    const byte FrameFileChunk = 10; // [id][bytes]
+    const byte FrameFileEnd = 11;   // [id]
+    const byte FrameFileCancel = 12; // [id]                 sender gave up (queued or running)
 
     readonly Stream stream;
     readonly IReceivedFileStore store;
     readonly string name;
     readonly SemaphoreSlim writeLock = new(1, 1);
-    readonly SemaphoreSlim fileLock = new(1, 1);
+    int nextFileId;
     long lastReceived = Environment.TickCount64;
     int framesRead;
 
@@ -37,66 +38,58 @@ public sealed class ChatSession : IDisposable
         return WriteFrameAsync(FrameText, Encoding.UTF8.GetBytes(text), ct);
     }
 
-    public async Task SendFileAsync(string fileName, Stream source, Action<long, long>? onProgress = null, CancellationToken ct = default)
+    public uint NewFileId() => (uint)Interlocked.Increment(ref nextFileId);
+
+    // Tells the other side a file is waiting in the queue, so it can show it right away.
+    public Task OfferFileAsync(uint id, string fileName, long size, CancellationToken ct = default)
     {
-        await fileLock.WaitAsync(ct);
-        var started = false;
-        try
-        {
-            AppLog.Write("SESSION", $"{name} file tx start {fileName}");
-            long size = -1;
-            try { if (source.CanSeek) size = source.Length; } catch { }
-            ct.ThrowIfCancellationRequested();
-            await WriteFrameAsync(FrameFileStart, Encoding.UTF8.GetBytes(fileName), ct);
-            started = true;
-            if (size >= 0)
-            {
-                var sizeBytes = new byte[8];
-                BinaryPrimitives.WriteInt64LittleEndian(sizeBytes, size);
-                await WriteFrameAsync(FrameFileSize, sizeBytes, ct);
-            }
-            onProgress?.Invoke(0, size);
-            var buffer = new byte[Protocol.ChunkSize];
-            long total = 0;
-            int read;
-            while ((read = await source.ReadAsync(buffer, ct)) > 0)
-            {
-                ct.ThrowIfCancellationRequested();
-                await WriteFrameAsync(FrameFileChunk, buffer.AsMemory(0, read), ct);
-                total += read;
-                onProgress?.Invoke(total, size);
-            }
-            await WriteFrameAsync(FrameFileEnd, ReadOnlyMemory<byte>.Empty, ct);
-            AppLog.Write("SESSION", $"{name} file tx done bytes={total}");
-        }
-        catch (OperationCanceledException) when (started && ct.IsCancellationRequested)
-        {
-            // The receiver already opened a file for us: tell it to drop the partial data.
-            AppLog.Write("SESSION", $"{name} file tx canceled by user, notifying peer");
-            try
-            {
-                await WriteFrameAsync(FrameFileCancel, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("SESSION", $"{name} cancel frame failed", ex);
-            }
-            throw;
-        }
-        finally
-        {
-            fileLock.Release();
-        }
+        AppLog.Write("SESSION", $"{name} file offer id={id} {fileName} size={size}");
+        var nameBytes = Encoding.UTF8.GetBytes(fileName);
+        var payload = new byte[8 + nameBytes.Length];
+        BinaryPrimitives.WriteInt64LittleEndian(payload, size);
+        nameBytes.CopyTo(payload, 8);
+        return WriteFrameAsync(FrameFileOffer, id, payload, ct);
     }
 
-    async Task WriteFrameAsync(byte type, ReadOnlyMemory<byte> payload, CancellationToken ct)
+    public async Task SendFileAsync(uint id, Stream source, Action<long, long>? onProgress = null, long size = -1, CancellationToken ct = default)
+    {
+        AppLog.Write("SESSION", $"{name} file tx start id={id}");
+        ct.ThrowIfCancellationRequested();
+        await WriteFrameAsync(FrameFileBegin, id, ReadOnlyMemory<byte>.Empty, ct);
+        onProgress?.Invoke(0, size);
+        var buffer = new byte[Protocol.ChunkSize];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, ct)) > 0)
+        {
+            ct.ThrowIfCancellationRequested();
+            await WriteFrameAsync(FrameFileChunk, id, buffer.AsMemory(0, read), ct);
+            total += read;
+            onProgress?.Invoke(total, size);
+        }
+        await WriteFrameAsync(FrameFileEnd, id, ReadOnlyMemory<byte>.Empty, ct);
+        AppLog.Write("SESSION", $"{name} file tx done id={id} bytes={total}");
+    }
+
+    // Safe to call for any id (queued, running or already gone): the receiver ignores unknown ids.
+    public Task CancelFileAsync(uint id)
+    {
+        AppLog.Write("SESSION", $"{name} file cancel id={id}");
+        return WriteFrameAsync(FrameFileCancel, id, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
+    }
+
+    Task WriteFrameAsync(byte type, ReadOnlyMemory<byte> payload, CancellationToken ct) =>
+        WriteFrameAsync(type, null, payload, ct);
+
+    async Task WriteFrameAsync(byte type, uint? id, ReadOnlyMemory<byte> payload, CancellationToken ct)
     {
         await writeLock.WaitAsync(ct);
         try
         {
-            var header = new byte[5];
+            var header = new byte[id.HasValue ? 9 : 5];
             header[0] = type;
-            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(1), payload.Length);
+            BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(1), payload.Length + (id.HasValue ? 4 : 0));
+            if (id.HasValue) BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(5), id.Value);
             // ct only guards waiting for the lock: cancelling in the middle of a frame would corrupt the stream.
             await stream.WriteAsync(header, CancellationToken.None);
             if (payload.Length > 0) await stream.WriteAsync(payload, CancellationToken.None);
@@ -117,11 +110,7 @@ public sealed class ChatSession : IDisposable
         _ = Task.Run(() => WatchdogAsync(heartbeat.Token));
         _ = Task.Run(() => PingAsync(heartbeat.Token));
         var header = new byte[5];
-        ReceivedFile? file = null;
-        string fileName = "file";
-        ChatMessage? incoming = null;
-        long expected = -1;
-        long received = 0;
+        var incoming = new Dictionary<uint, IncomingFile>();
         try
         {
             while (true)
@@ -135,7 +124,8 @@ public sealed class ChatSession : IDisposable
                 Interlocked.Exchange(ref lastReceived, Environment.TickCount64);
                 framesRead++;
 
-                switch (header[0])
+                var type = header[0];
+                switch (type)
                 {
                     case FramePing:
                         AppLog.Write("SESSION", $"{name} ping rx");
@@ -144,58 +134,64 @@ public sealed class ChatSession : IDisposable
                         AppLog.Write("SESSION", $"{name} text rx bytes={length}");
                         MessageReceived?.Invoke(new ChatMessage { Text = Encoding.UTF8.GetString(payload) });
                         break;
-                    case FrameFileStart:
-                        await AbortFileAsync(file);
-                        file = null;
-                        incoming?.Fail();
-                        fileName = Path.GetFileName(Encoding.UTF8.GetString(payload));
+                    case FrameFileOffer:
+                    {
+                        if (payload.Length < 12) break;
+                        var id = BinaryPrimitives.ReadUInt32LittleEndian(payload);
+                        var size = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(4));
+                        var fileName = Path.GetFileName(Encoding.UTF8.GetString(payload.AsSpan(12)));
                         if (string.IsNullOrWhiteSpace(fileName)) fileName = "file";
-                        file = await store.CreateAsync(fileName, ct);
-                        fileName = file.Name;
-                        expected = -1;
-                        received = 0;
-                        incoming = new ChatMessage { Text = fileName, IsFile = true, Location = file.Location, ShowProgress = true };
-                        AppLog.Write("SESSION", $"{name} file rx start {fileName}");
-                        MessageReceived?.Invoke(incoming);
-                        break;
-                    case FrameFileSize:
-                        if (incoming != null && payload.Length == 8)
+                        if (incoming.Remove(id, out var stale))
                         {
-                            expected = BinaryPrimitives.ReadInt64LittleEndian(payload);
-                            incoming.Report(received, expected);
+                            await AbortFileAsync(stale.File);
+                            stale.Message.Fail();
                         }
+                        var message = new ChatMessage { Text = fileName, IsFile = true };
+                        message.SetQueued("fileWaiting");
+                        incoming[id] = new IncomingFile(fileName, size, message);
+                        AppLog.Write("SESSION", $"{name} file rx offer id={id} {fileName} size={size}");
+                        MessageReceived?.Invoke(message);
                         break;
+                    }
+                    case FrameFileBegin:
+                    {
+                        if (payload.Length < 4 || !incoming.TryGetValue(BinaryPrimitives.ReadUInt32LittleEndian(payload), out var item)) break;
+                        item.File = await store.CreateAsync(item.Name, ct);
+                        AppLog.Write("SESSION", $"{name} file rx start {item.File.Name}");
+                        item.Message.Begin(item.File.Name, item.File.Location, item.Expected);
+                        break;
+                    }
                     case FrameFileChunk:
-                        if (file != null)
-                        {
-                            await file.Stream.WriteAsync(payload, ct);
-                            received += payload.Length;
-                            incoming?.Report(received, expected);
-                        }
+                    {
+                        if (payload.Length < 4 || !incoming.TryGetValue(BinaryPrimitives.ReadUInt32LittleEndian(payload), out var item) || item.File == null) break;
+                        await item.File.Stream.WriteAsync(payload.AsMemory(4), ct);
+                        item.Received += payload.Length - 4;
+                        item.Message.Report(item.Received, item.Expected);
                         break;
+                    }
                     case FrameFileEnd:
-                        if (file != null)
-                        {
-                            await file.Stream.DisposeAsync();
-                            await file.Complete();
-                            file = null;
-                            AppLog.Write("SESSION", $"{name} file rx done {fileName}");
-                            incoming?.Complete();
-                            incoming = null;
-                        }
+                    {
+                        if (payload.Length < 4) break;
+                        var id = BinaryPrimitives.ReadUInt32LittleEndian(payload);
+                        if (!incoming.Remove(id, out var item) || item.File == null) break;
+                        await item.File.Stream.DisposeAsync();
+                        await item.File.Complete();
+                        AppLog.Write("SESSION", $"{name} file rx done {item.File.Name}");
+                        item.Message.Complete();
                         break;
+                    }
                     case FrameFileCancel:
-                        if (file != null || incoming != null)
-                        {
-                            AppLog.Write("SESSION", $"{name} file rx canceled by sender {fileName}");
-                            await AbortFileAsync(file);
-                            file = null;
-                            incoming?.Fail("fileCanceledByPeer");
-                            incoming = null;
-                        }
+                    {
+                        if (payload.Length < 4) break;
+                        var id = BinaryPrimitives.ReadUInt32LittleEndian(payload);
+                        if (!incoming.Remove(id, out var item)) break;
+                        AppLog.Write("SESSION", $"{name} file rx canceled by sender {item.Name}");
+                        await AbortFileAsync(item.File);
+                        item.Message.Fail("fileCanceledByPeer");
                         break;
+                    }
                     default:
-                        AppLog.Write("SESSION", $"{name} unknown frame type={header[0]}");
+                        AppLog.Write("SESSION", $"{name} unknown frame type={type}");
                         break;
                 }
             }
@@ -208,8 +204,12 @@ public sealed class ChatSession : IDisposable
         finally
         {
             heartbeat.Cancel();
-            await AbortFileAsync(file);
-            incoming?.Fail();
+            foreach (var item in incoming.Values)
+            {
+                await AbortFileAsync(item.File);
+                item.Message.Fail();
+            }
+            incoming.Clear();
             AppLog.Write("SESSION", $"{name} read loop ended after {sw.Elapsed.TotalSeconds:F1}s frames={framesRead}");
         }
     }
@@ -268,6 +268,15 @@ public sealed class ChatSession : IDisposable
         {
             AppLog.Error("SESSION", "abort partial file failed", ex);
         }
+    }
+
+    sealed class IncomingFile(string name, long expected, ChatMessage message)
+    {
+        public string Name { get; } = name;
+        public long Expected { get; } = expected;
+        public ChatMessage Message { get; } = message;
+        public ReceivedFile? File { get; set; }
+        public long Received { get; set; }
     }
 
     public void Dispose()

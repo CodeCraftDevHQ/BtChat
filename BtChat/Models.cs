@@ -15,14 +15,23 @@ public static class Protocol
 
 public class ChatMessage : ObservableObject
 {
-    public string Text { get; init; } = "";
+    string text = "";
+    string? location;
+    public string Text
+    {
+        get => text;
+        set
+        {
+            if (SetProperty(ref text, value)) OnPropertyChanged(nameof(Display));
+        }
+    }
     public bool IsMine { get; init; }
     public bool IsFile { get; init; }
     public bool IsText => !IsFile;
     public bool IsReceivedFile => IsFile && !IsMine;
     public bool HasMenu => IsText || (IsFile && !ShowProgress);
     public bool CanCancel => IsMine && IsFile && ShowProgress;
-    public string? Location { get; init; }
+    public string? Location { get => location; set => SetProperty(ref location, value); }
     public DateTime Time { get; init; } = DateTime.Now;
     public string Display => IsFile ? "📎 " + Text : Text;
     public string TimeText => Time.ToString("HH:mm");
@@ -87,6 +96,27 @@ public class ChatMessage : ObservableObject
             StatusText = text;
             ShowProgress = true;
         });
+    }
+
+    // Waiting for its turn (sender) or for the sender to start it (receiver).
+    public void SetQueued(string key = "queued") => OnUi(() =>
+    {
+        lastKey = -1;
+        Progress = 0;
+        StatusText = Loc.Instance[key];
+        ShowProgress = true;
+    });
+
+    // Receiver: the real file now exists, so the final name and location are known.
+    public void Begin(string name, string fileLocation, long expected)
+    {
+        OnUi(() =>
+        {
+            Text = name;
+            Location = fileLocation;
+        });
+        lastKey = -1;
+        Report(0, expected);
     }
 
     public void Complete() => OnUi(() =>

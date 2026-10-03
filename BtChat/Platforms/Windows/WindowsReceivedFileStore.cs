@@ -66,8 +66,20 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
         }
     }
 
+    static bool CheckExists(string location, string name)
+    {
+        if (File.Exists(location)) return true;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page != null) await page.DisplayAlert(name, Loc.Instance["fileMissing"], "OK");
+        });
+        return false;
+    }
+
     public Task OpenAsync(string location, string name)
     {
+        if (!CheckExists(location, name)) return Task.CompletedTask;
         Process.Start(new ProcessStartInfo(location) { UseShellExecute = true });
         return Task.CompletedTask;
     }
@@ -86,7 +98,9 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
     }
 
     public Task ShareAsync(string location, string name) =>
-        Share.Default.RequestAsync(new ShareFileRequest(name, new ShareFile(location)));
+        CheckExists(location, name)
+            ? Share.Default.RequestAsync(new ShareFileRequest(name, new ShareFile(location)))
+            : Task.CompletedTask;
 
     public Task DeleteAsync(string location)
     {

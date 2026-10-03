@@ -114,8 +114,28 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
 
     static bool IsContentUri(string location) => location.StartsWith("content://", StringComparison.Ordinal);
 
+    // The original file may have been moved or deleted since it was sent or received.
+    static bool Exists(string location)
+    {
+        try
+        {
+            if (!IsContentUri(location)) return File.Exists(location);
+            using var fd = Ctx.ContentResolver!.OpenAssetFileDescriptor(AndroidUri.Parse(location)!, "r");
+            return fd != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task OpenAsync(string location, string name)
     {
+        if (!Exists(location))
+        {
+            ShowToast(Loc.Instance["fileMissing"]);
+            return;
+        }
         if (!IsContentUri(location))
         {
             await Launcher.Default.OpenAsync(new OpenFileRequest(name, new ReadOnlyFile(location)));
@@ -166,6 +186,11 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
 
     public async Task ShareAsync(string location, string name)
     {
+        if (!Exists(location))
+        {
+            ShowToast(Loc.Instance["fileMissing"]);
+            return;
+        }
         if (!IsContentUri(location))
         {
             await Share.Default.RequestAsync(new ShareFileRequest(name, new ShareFile(location)));

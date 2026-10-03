@@ -19,8 +19,12 @@ public static class MauiProgram
 #if ANDROID
         builder.UseBarcodeScanning();
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
+        builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
+        builder.Services.AddSingleton<IFileSource, AndroidFileSource>();
 #else
         builder.Services.AddSingleton<IQrScanner, NoQrScanner>();
+        builder.Services.AddSingleton<IKeepAlive, NoKeepAlive>();
+        builder.Services.AddSingleton<IFileSource, DefaultFileSource>();
 #endif
         builder.Services.AddSingleton<TcpTransport>();
         builder.Services.AddSingleton<DiscoveryService>();

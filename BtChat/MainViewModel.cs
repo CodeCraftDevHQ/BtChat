@@ -14,6 +14,12 @@ public partial class MainViewModel : ObservableObject
     readonly IReceivedFileStore files;
     readonly IQrScanner qr;
     readonly DiscoveryService discovery;
+    readonly IKeepAlive keepAlive;
+    readonly IFileSource fileSource;
+    readonly object sendLock = new();
+    readonly List<PendingSend> sendQueue = new();
+    int activeSends;
+    const int MaxParallelSends = 4;
     QrShowPage? qrPage;
     bool searched;
     readonly object gate = new();
@@ -37,7 +43,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBluetoothMode))]
     [NotifyPropertyChangedFor(nameof(IsLanMode))]
-    int modeIndex = 0;
+    int modeIndex = Preferences.Default.Get("mode", 0) == 1 ? 1 : 0;
 
     public bool IsBluetoothMode => ModeIndex == 0;
     public bool IsLanMode => ModeIndex == 1;
@@ -63,6 +69,29 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSearchText));
     }
 
+    [ObservableProperty] bool concurrentFiles = Preferences.Default.Get("concurrentFiles", true);
+
+    partial void OnConcurrentFilesChanged(bool value)
+    {
+        Preferences.Default.Set("concurrentFiles", value);
+        AppLog.Write("UI", $"send several files at once = {value}");
+        PumpSends();
+    }
+
+    public int TransferCount => Messages.Count(m => m.ShowProgress);
+    public bool HasTransfers => TransferCount > 0;
+    public string TransferText => string.Format(Loc.Instance["transferCount"], TransferCount);
+
+    void NotifyTransfers()
+    {
+        OnPropertyChanged(nameof(TransferCount));
+        OnPropertyChanged(nameof(HasTransfers));
+        OnPropertyChanged(nameof(TransferText));
+    }
+
+    // Bluetooth always sends one file after another; Wi-Fi can send several at once.
+    int SendLimit => IsLanMode && ConcurrentFiles ? MaxParallelSends : 1;
+
     IReadOnlyList<string> addresses = Array.Empty<string>();
     public string LocalAddresses => addresses.Count > 0 ? string.Join("  |  ", addresses) : Loc.Instance["noNetwork"];
     public bool HasMessages => Messages.Count > 0;
@@ -73,6 +102,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (value < 0) { ModeIndex = 0; return; }
         AppLog.Write("UI", $"mode changed to {value}");
+        Preferences.Default.Set("mode", value);
         if (IsLinked) Disconnect();
         discovery.SetActive(value == 1);
         if (value == 1)
@@ -116,10 +146,18 @@ public partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsLinked));
         OnPropertyChanged(nameof(IsNotLinked));
+        keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource)
     {
+        this.keepAlive = keepAlive;
+        this.fileSource = fileSource;
+        keepAlive.ExitRequested += () => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            AppLog.Write("APP", "exit requested (removed from recent apps), disconnecting");
+            Disconnect();
+        });
         this.qr = qr;
         this.discovery = discovery;
         discovery.CanRespond = () => IsLanMode && session == null;
@@ -132,7 +170,11 @@ public partial class MainViewModel : ObservableObject
         this.transport = transport;
         this.files = files;
         this.tcp = tcp;
-        Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasMessages));
+        Messages.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasMessages));
+            NotifyTransfers();
+        };
         foreach (var m in ChatHistory.Load()) Messages.Add(m);
         AppLog.Changed += () =>
         {
@@ -178,7 +220,13 @@ public partial class MainViewModel : ObservableObject
         UpdateAddresses("startup");
         _ = Task.Run(() => AcceptLoopAsync("tcp", tcp.AcceptAsync));
         _ = Task.Run(discovery.RunAsync);
+        if (IsLanMode)
+        {
+            discovery.SetActive(true);
+            _ = SearchDevicesAsync();
+        }
         await files.EnsureReadyAsync();
+        await keepAlive.EnsurePermissionAsync();
         if (!await transport.EnsurePermissionsAsync())
         {
             AppLog.Write("APP", "bluetooth not usable, skipping bluetooth loops");
@@ -194,7 +242,8 @@ public partial class MainViewModel : ObservableObject
             if (saved != null)
             {
                 SelectedDevice = saved;
-                autoTarget = saved;
+                // In Wi-Fi mode the Bluetooth device is only pre-selected, not auto-connected.
+                if (IsBluetoothMode) autoTarget = saved;
             }
             else
             {
@@ -319,6 +368,7 @@ public partial class MainViewModel : ObservableObject
             {
                 session = null;
             }
+            FailQueuedSends();
             IsConnected = false;
             AppLog.Write("VM", $"session {name} finished, autoTarget={(autoTarget != null ? autoTarget.Name : "none")}");
             SetStatus(autoTarget != null ? "retrying" : "idle");
@@ -576,50 +626,163 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    sealed class PendingSend
+    {
+        public required ChatSession Session { get; init; }
+        public required uint Id { get; init; }
+        public required PickedFile File { get; init; }
+        public required ChatMessage Message { get; init; }
+        public required long Size { get; init; }
+        public CancellationTokenSource Cts { get; } = new();
+    }
+
     [RelayCommand]
     async Task AttachAsync()
     {
         var s = session;
         if (s == null) return;
-        var picked = await FilePicker.Default.PickAsync();
-        if (picked == null) return;
-        var cts = new CancellationTokenSource();
-        var message = new ChatMessage { Text = picked.FileName, IsMine = true, IsFile = true, Location = picked.FullPath, ShowProgress = true, Cts = cts };
-        AddMessage(message);
+        IReadOnlyList<PickedFile> picked;
         try
         {
-            await using var source = await picked.OpenReadAsync();
-            await Task.Run(() => s.SendFileAsync(picked.FileName, source, (done, total) => message.Report(done, total), cts.Token));
-            message.Complete();
-        }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested)
-        {
-            AppLog.Write("VM", "send file canceled by user");
-            message.Fail("fileCanceled");
+            picked = await fileSource.PickAsync();
         }
         catch (Exception ex)
         {
-            AppLog.Error("VM", "send file failed", ex);
+            AppLog.Error("VM", "file picker failed", ex);
+            return;
+        }
+        if (picked.Count == 0) return;
+        AppLog.Write("UI", $"files picked: {picked.Count}");
+        foreach (var file in picked)
+        {
+            var size = file.Size;
+            var item = new PendingSend
+            {
+                Session = s,
+                Id = s.NewFileId(),
+                File = file,
+                Size = size,
+                Message = new ChatMessage { Text = file.Name, IsMine = true, IsFile = true, Location = file.Location }
+            };
+            item.Message.Cts = item.Cts;
+            item.Message.SetQueued();
+            AddMessage(item.Message);
+            lock (sendLock) sendQueue.Add(item);
+            try
+            {
+                await s.OfferFileAsync(item.Id, file.Name, size);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("VM", "offer file failed", ex);
+                lock (sendLock) sendQueue.Remove(item);
+                item.Message.Fail();
+                SetStatus("failed");
+            }
+        }
+        PumpSends();
+    }
+
+    // Starts queued files while there is a free slot: 1 slot for Bluetooth, up to 4 for Wi-Fi "at once".
+    void PumpSends()
+    {
+        while (true)
+        {
+            PendingSend? next;
+            lock (sendLock)
+            {
+                if (activeSends >= SendLimit || sendQueue.Count == 0) return;
+                next = sendQueue[0];
+                sendQueue.RemoveAt(0);
+                activeSends++;
+            }
+            _ = RunSendAsync(next);
+        }
+    }
+
+    async Task RunSendAsync(PendingSend item)
+    {
+        var message = item.Message;
+        try
+        {
+            await using var source = await item.File.Open();
+            var size = item.Size;
+            try { if (source.CanSeek) size = source.Length; } catch { }
+            await Task.Run(() => item.Session.SendFileAsync(item.Id, source, (done, total) => message.Report(done, total), size, item.Cts.Token));
+            message.Complete();
+        }
+        catch (OperationCanceledException) when (item.Cts.IsCancellationRequested)
+        {
+            AppLog.Write("VM", $"send file canceled by user: {message.Text}");
+            message.Fail("fileCanceled");
+            await TryCancelOnPeerAsync(item);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", $"send file failed: {message.Text}", ex);
             message.Fail();
             SetStatus("failed");
+            await TryCancelOnPeerAsync(item);
         }
         finally
         {
             message.Cts = null;
+            lock (sendLock) activeSends--;
+            PumpSends();
         }
+    }
+
+    static async Task TryCancelOnPeerAsync(PendingSend item)
+    {
+        try
+        {
+            await item.Session.CancelFileAsync(item.Id);
+        }
+        catch
+        {
+            // The connection is gone; the other side already dropped its partial file.
+        }
+    }
+
+    void FailQueuedSends()
+    {
+        List<PendingSend> dropped;
+        lock (sendLock)
+        {
+            dropped = sendQueue.ToList();
+            sendQueue.Clear();
+        }
+        foreach (var item in dropped) item.Message.Fail();
     }
 
     [RelayCommand]
     void CancelFile(ChatMessage? message)
     {
-        if (message?.Cts == null) return;
+        if (message == null || !message.CanCancel) return;
         AppLog.Write("UI", $"cancel sending {message.Text}");
-        message.Cts.Cancel();
+        PendingSend? queued;
+        lock (sendLock)
+        {
+            queued = sendQueue.FirstOrDefault(p => p.Message == message);
+            if (queued != null) sendQueue.Remove(queued);
+        }
+        if (queued != null)
+        {
+            // Never started: just drop it and tell the other side to forget the offer.
+            message.Fail("fileCanceled");
+            _ = TryCancelOnPeerAsync(queued);
+            return;
+        }
+        message.Cts?.Cancel();
     }
 
     void AddMessage(ChatMessage message)
     {
         message.Finished += SaveHistory;
+        message.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ChatMessage.ShowProgress)) NotifyTransfers();
+        };
         Messages.Add(message);
         if (!message.ShowProgress) SaveHistory();
     }
@@ -635,7 +798,11 @@ public partial class MainViewModel : ObservableObject
         var ok = await page.DisplayAlert(loc["clearHistory"], loc["clearHistoryAsk"], loc["delete"], loc["cancel"]);
         if (!ok) return;
         // Transfers that are still running keep their bubble.
-        foreach (var m in Messages.Where(m => !m.ShowProgress).ToList()) Messages.Remove(m);
+        foreach (var m in Messages.Where(m => !m.ShowProgress).ToList())
+        {
+            Messages.Remove(m);
+            ReleaseIfUnused(m);
+        }
         SaveHistory();
         AppLog.Write("UI", "chat history cleared");
     }
@@ -658,7 +825,17 @@ public partial class MainViewModel : ObservableObject
             }
         }
         Messages.Remove(message);
+        ReleaseIfUnused(message);
         SaveHistory();
+    }
+
+    // A sent file keeps its saved access only while some chat message still points to it.
+    void ReleaseIfUnused(ChatMessage message)
+    {
+        var location = message.Location;
+        if (!message.IsMine || !message.IsFile || location == null) return;
+        if (Messages.Any(m => m.Location == location)) return;
+        fileSource.Release(location);
     }
 
     [RelayCommand]
@@ -730,6 +907,16 @@ public partial class MainViewModel : ObservableObject
         SetStatus(statusKey);
         OnPropertyChanged(nameof(LocalAddresses));
         NotifySearch();
+        NotifyTransfers();
+    }
+
+    public bool CanOpenBatterySettings => keepAlive.CanOpenBatterySettings;
+
+    [RelayCommand]
+    async Task BatterySettingsAsync()
+    {
+        AppLog.Write("UI", "battery settings pressed");
+        await SafeAsync("battery settings", keepAlive.OpenBatterySettingsAsync);
     }
 
     [RelayCommand]

@@ -179,6 +179,7 @@ public sealed class DiscoveryService
 
     public async Task SearchAsync(TimeSpan duration)
     {
+        for (var i = 0; i < 15 && udp == null; i++) await Task.Delay(100);
         var client = udp;
         if (client == null)
         {
