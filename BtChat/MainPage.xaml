@@ -8,7 +8,7 @@
               FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
                 <Button Text="☰" FontSize="20" Padding="0" WidthRequest="48" HeightRequest="44"
-                        Command="{Binding ToggleDrawerCommand}" />
+                        Command="{Binding ToggleDrawerCommand}" IsVisible="{Binding ShowMenuButton}" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
                     <Label Text="{Binding CurrentTitle}" FontAttributes="Bold" FontSize="18" LineBreakMode="TailTruncation" />
                     <Label Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="TailTruncation" />
@@ -42,6 +42,12 @@
                                     <Label Text="{Binding SenderName}" IsVisible="{Binding HasSender}"
                                            FontSize="11" FontAttributes="Bold" TextColor="#1B3FCF" />
                                     <Label Text="{Binding Display}" TextColor="Black" />
+                                    <Image Source="{Binding Thumb}" IsVisible="{Binding ShowImage}"
+                                           WidthRequest="220" HeightRequest="160" Aspect="AspectFill" HorizontalOptions="Start" />
+                                    <Border IsVisible="{Binding ShowVideoBox}" BackgroundColor="#222222" Stroke="Transparent"
+                                            StrokeShape="RoundRectangle 8" WidthRequest="220" HeightRequest="110" HorizontalOptions="Start">
+                                        <Label Text="▶" TextColor="White" FontSize="36" HorizontalOptions="Center" VerticalOptions="Center" />
+                                    </Border>
                                     <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding ShowProgress}"
                                                  MinimumWidthRequest="200" />
                                     <Label Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
@@ -67,12 +73,6 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-            <Grid Grid.Row="2" RowDefinitions="*,Auto" ColumnDefinitions="*,*" ColumnSpacing="6" RowSpacing="6"
-                  IsVisible="{Binding ShowLog}" BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
-                <Editor Grid.ColumnSpan="2" Text="{Binding LogText}" IsReadOnly="True" FontSize="11" />
-                <Button Grid.Row="1" Text="{Binding [copy], Source={x:Static local:Loc.Instance}}" Command="{Binding CopyLogCommand}" />
-                <Button Grid.Row="1" Grid.Column="1" Text="{Binding [clear], Source={x:Static local:Loc.Instance}}" Command="{Binding ClearLogCommand}" />
-            </Grid>
             <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
                 <Button Text="📎" Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />
                 <Entry Grid.Column="1" Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
@@ -82,7 +82,7 @@
             </Grid>
         </Grid>
 
-        <BoxView x:Name="Scrim" Color="Black" Opacity="0.45" IsVisible="{Binding IsDrawerOpen}">
+        <BoxView x:Name="Scrim" Color="Black" Opacity="0.45" IsVisible="{Binding ShowScrim}">
             <BoxView.GestureRecognizers>
                 <TapGestureRecognizer Command="{Binding CloseDrawerCommand}" />
             </BoxView.GestureRecognizers>
@@ -90,15 +90,17 @@
 
         <Grid x:Name="Drawer" HorizontalOptions="Start" WidthRequest="320" TranslationX="-344"
               BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
-            <Grid RowDefinitions="Auto,*" Padding="12,12,12,0" RowSpacing="8"
+            <BoxView WidthRequest="1" HorizontalOptions="End" Color="Gray" Opacity="0.3" />
+            <Grid RowDefinitions="Auto,Auto,*" Padding="12,12,12,0" RowSpacing="8"
                   FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                     <Label Text="BtChat" FontAttributes="Bold" FontSize="20" VerticalOptions="Center" />
                     <Button Grid.Column="1" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
                             Command="{Binding ToggleLanguageCommand}" />
-                    <Button Grid.Column="2" Text="✕" Command="{Binding CloseDrawerCommand}" />
+                    <Button Grid.Column="2" Text="✕" Command="{Binding CloseDrawerCommand}" IsVisible="{Binding ShowMenuButton}" />
                 </Grid>
-                <ScrollView Grid.Row="1">
+                <Label Grid.Row="1" Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="WordWrap" />
+                <ScrollView Grid.Row="2">
                     <VerticalStackLayout Spacing="10" Padding="0,0,0,24">
                         <Label Text="{Binding [myName], Source={x:Static local:Loc.Instance}}" FontSize="12" TextColor="Gray" />
                         <Entry Text="{Binding MyName}" MaxLength="40" />
@@ -234,5 +236,29 @@
                 </ScrollView>
             </Grid>
         </Grid>
+
+        <BoxView Color="Black" Opacity="0.55" IsVisible="{Binding ShowLog}">
+            <BoxView.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseLogCommand}" />
+            </BoxView.GestureRecognizers>
+        </BoxView>
+        <Border x:Name="LogCard" IsVisible="{Binding ShowLog}" HorizontalOptions="Center" VerticalOptions="Center"
+                WidthRequest="520" HeightRequest="480" Padding="12" StrokeShape="RoundRectangle 14" Stroke="Gray"
+                BackgroundColor="{AppThemeBinding Light=White, Dark=#1E1E1E}">
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8"
+                  FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label Text="{Binding [logTitle], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="18" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="✕" FontSize="16" Padding="0" WidthRequest="36" HeightRequest="36"
+                            MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
+                            Command="{Binding CloseLogCommand}" />
+                </Grid>
+                <Editor Grid.Row="1" Text="{Binding LogText}" IsReadOnly="True" FontSize="11" />
+                <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="6">
+                    <Button Text="{Binding [copy], Source={x:Static local:Loc.Instance}}" Command="{Binding CopyLogCommand}" />
+                    <Button Grid.Column="1" Text="{Binding [clear], Source={x:Static local:Loc.Instance}}" Command="{Binding ClearLogCommand}" />
+                </Grid>
+            </Grid>
+        </Border>
     </Grid>
 </ContentPage>

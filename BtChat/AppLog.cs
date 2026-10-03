@@ -5,18 +5,34 @@ namespace BtChat;
 
 public static class AppLog
 {
+    const int MaxLines = 1000;
+    const int TrimToLines = 800;
+    const int MaxLineLength = 400;
+
     static readonly object gate = new();
     static readonly List<string> lines = new();
 
+#if DEBUG
+    public static bool VerboseEnabled { get; set; } = true;
+#else
+    public static bool VerboseEnabled { get; set; } = false;
+#endif
+
     public static event Action? Changed;
+
+    public static void Verbose(string tag, string message)
+    {
+        if (VerboseEnabled) Write(tag, message);
+    }
 
     public static void Write(string tag, string message)
     {
         var line = $"{DateTime.Now:HH:mm:ss.fff} T{Environment.CurrentManagedThreadId} {tag}: {message}";
+        if (line.Length > MaxLineLength) line = line[..MaxLineLength] + "…";
         lock (gate)
         {
             lines.Add(line);
-            if (lines.Count > 4000) lines.RemoveRange(0, 1000);
+            if (lines.Count > MaxLines) lines.RemoveRange(0, lines.Count - TrimToLines);
         }
         Debug.WriteLine(line);
         Changed?.Invoke();

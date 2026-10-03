@@ -16,6 +16,9 @@ public partial class MainViewModel : ObservableObject
     readonly DiscoveryService discovery;
     readonly IKeepAlive keepAlive;
     readonly IFileSource fileSource;
+    readonly IPermissionGate permissions;
+    bool btStarted;
+    int logRefreshPending;
     readonly object sendLock = new();
     readonly List<PendingSend> sendQueue = new();
     int activeSends;
@@ -40,6 +43,18 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty] Conversation? currentChat;
     [ObservableProperty] bool isDrawerOpen;
+    [ObservableProperty] bool isWide;
+
+    public bool ShowMenuButton => !IsWide;
+    public bool ShowScrim => IsDrawerOpen && !IsWide;
+
+    partial void OnIsDrawerOpenChanged(bool value) => OnPropertyChanged(nameof(ShowScrim));
+
+    partial void OnIsWideChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowMenuButton));
+        OnPropertyChanged(nameof(ShowScrim));
+    }
     [ObservableProperty] string myName = LocalDevice.Name;
 
     public string CurrentTitle => CurrentChat?.Name ?? "BtChat";
@@ -122,6 +137,7 @@ public partial class MainViewModel : ObservableObject
         Preferences.Default.Set("mode", value);
         if (IsLinked) Disconnect();
         discovery.SetActive(value == 1);
+        if (value == 0 && !btStarted) _ = EnsureBluetoothAsync(true);
         if (value == 1)
         {
             UpdateAddresses("switched to Wi-Fi mode");
@@ -237,11 +253,21 @@ public partial class MainViewModel : ObservableObject
             WatchChat(chat);
             Conversations.Insert(0, chat);
         }
-        else if (chat.Name != name)
+        else if (chat.PeerName != name)
         {
-            chat.Name = name;
+            chat.PeerName = name;
         }
         return chat;
+    }
+
+    string FolderFor(Conversation chat)
+    {
+        var folder = LocalDevice.SafeFolder(chat.Name);
+        var clash = Conversations.Any(c => !ReferenceEquals(c, chat)
+            && string.Equals(LocalDevice.SafeFolder(c.Name), folder, StringComparison.OrdinalIgnoreCase));
+        if (!clash) return folder;
+        var tag = chat.Id.Length > 4 ? chat.Id[..4] : chat.Id;
+        return folder + " (" + tag + ")";
     }
 
     Conversation TargetChat()
@@ -262,9 +288,10 @@ public partial class MainViewModel : ObservableObject
         keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions)
     {
         this.keepAlive = keepAlive;
+        this.permissions = permissions;
         this.fileSource = fileSource;
         keepAlive.ExitRequested += () => MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -282,6 +309,7 @@ public partial class MainViewModel : ObservableObject
         };
         this.transport = transport;
         this.files = files;
+        ChatMessage.Opener = files.OpenReadAsync;
         this.tcp = tcp;
         Conversations.CollectionChanged += (_, _) =>
         {
@@ -298,7 +326,16 @@ public partial class MainViewModel : ObservableObject
         IsDrawerOpen = Conversations.Count == 0;
         AppLog.Changed += () =>
         {
-            if (ShowLog) MainThread.BeginInvokeOnMainThread(() => LogText = AppLog.GetText(400));
+            if (!ShowLog || Interlocked.Exchange(ref logRefreshPending, 1) == 1) return;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(400);
+                Interlocked.Exchange(ref logRefreshPending, 0);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (ShowLog) LogText = AppLog.GetText(400);
+                });
+            });
         };
         SetStatus("idle");
         try
@@ -345,15 +382,42 @@ public partial class MainViewModel : ObservableObject
             discovery.SetActive(true);
             _ = SearchDevicesAsync();
         }
-        await files.EnsureReadyAsync();
-        await keepAlive.EnsurePermissionAsync();
-        if (!await transport.EnsurePermissionsAsync())
+        var firstRun = !Preferences.Default.Get("btPrompted", false);
+        var interactive = IsBluetoothMode && firstRun;
+        if (interactive) Preferences.Default.Set("btPrompted", true);
+        await EnsureBluetoothAsync(interactive);
+    }
+
+    static async Task<bool> ConfirmAsync(string titleKey, string messageKey, string acceptKey)
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return false;
+        var loc = Loc.Instance;
+        return await page.DisplayAlert(loc[titleKey], loc[messageKey], loc[acceptKey], loc["cancel"]);
+    }
+
+    async Task<bool> EnsureBluetoothAsync(bool interactive)
+    {
+        var state = await transport.GetStateAsync();
+        if (state == BtState.NoPermission && interactive)
         {
-            AppLog.Write("APP", "bluetooth not usable, skipping bluetooth loops");
-            SetStatus("btoff");
-            return;
+            if (await permissions.EnsureAsync(PermissionKind.Bluetooth)) state = await transport.GetStateAsync();
         }
-        await RefreshAsync();
+        if (state == BtState.Off && interactive)
+        {
+            if (await ConfirmAsync("btTurnOnTitle", "btTurnOnAsk", "btTurnOn") && await transport.EnableAsync())
+                state = await transport.GetStateAsync();
+        }
+        if (state != BtState.Ready)
+        {
+            AppLog.Write("APP", $"bluetooth not usable: {state}");
+            if (IsBluetoothMode && !IsLinked) SetStatus(state == BtState.NoPermission ? "btNoPermission" : "btoff");
+            return false;
+        }
+        if (statusKey is "btoff" or "btNoPermission") SetStatus("idle");
+        if (btStarted) return true;
+        btStarted = true;
+        await LoadDevicesAsync();
         var savedId = Preferences.Default.Get("autoBt", "");
         AppLog.Write("APP", $"saved auto target id='{savedId}'");
         if (savedId.Length > 0)
@@ -372,6 +436,15 @@ public partial class MainViewModel : ObservableObject
         }
         _ = Task.Run(() => AcceptLoopAsync("bt", transport.AcceptAsync));
         _ = Task.Run(ReconnectLoopAsync);
+        return true;
+    }
+
+    async Task AskBackgroundPermissionsAsync()
+    {
+        await files.EnsureReadyAsync();
+        if (Preferences.Default.Get("notifAsked", false)) return;
+        Preferences.Default.Set("notifAsked", true);
+        await keepAlive.EnsurePermissionAsync();
     }
 
     async Task AcceptLoopAsync(string label, Func<CancellationToken, Task<Stream>> accept)
@@ -470,6 +543,7 @@ public partial class MainViewModel : ObservableObject
             chat = found;
             linkedChat = found;
             found.IsLinked = true;
+            current.ReceiveFolder = FolderFor(found);
             if (first)
             {
                 CurrentChat = found;
@@ -490,6 +564,7 @@ public partial class MainViewModel : ObservableObject
             catch (Exception ex) { AppLog.Error("QR", "closing qr page failed", ex); }
         });
         SetStatus("connected");
+        _ = MainThread.InvokeOnMainThreadAsync(AskBackgroundPermissionsAsync);
         try
         {
             await current.RunAsync();
@@ -521,8 +596,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    async Task RefreshAsync()
+    async Task LoadDevicesAsync()
     {
         var list = await transport.GetPairedDevicesAsync();
         Devices.Clear();
@@ -530,11 +604,21 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    async Task RefreshAsync()
+    {
+        var wasStarted = btStarted;
+        if (!await EnsureBluetoothAsync(true)) return;
+        if (wasStarted) await LoadDevicesAsync();
+    }
+
+    [RelayCommand]
     async Task ConnectAsync()
     {
+        AppLog.Write("UI", $"Connect pressed sessionExists={session != null}");
+        if (session != null) return;
+        if (!await EnsureBluetoothAsync(true)) return;
         var target = SelectedDevice;
-        AppLog.Write("UI", $"Connect pressed target={target?.Name} sessionExists={session != null}");
-        if (target == null || session != null) return;
+        if (target == null) return;
         autoTarget = target;
         Preferences.Default.Set("autoBt", target.Id);
         SetStatus("connecting");
@@ -993,7 +1077,19 @@ public partial class MainViewModel : ObservableObject
     async Task OpenFileAsync(ChatMessage? message)
     {
         if (message?.Location == null || message.ShowProgress || message.Failed) return;
+        if (message.CanPreview)
+        {
+            await ShowMediaAsync(message);
+            return;
+        }
         await SafeAsync("open file", () => files.OpenAsync(message.Location, message.Text));
+    }
+
+    async Task ShowMediaAsync(ChatMessage message)
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        await SafeAsync("show media", () => page.Navigation.PushModalAsync(new MediaViewerPage(message, files)));
     }
 
     [RelayCommand]
@@ -1007,9 +1103,12 @@ public partial class MainViewModel : ObservableObject
         {
             if (!message.HasMenu) return;
             var options = new List<string>();
+            var previewLabel = message.CanPreview ? loc[message.IsImage ? "viewImage" : "playMedia"] : null;
+            var openLabel = message.IsMedia ? loc["openWith"] : loc["openFile"];
             if (!message.Failed && message.Location != null)
             {
-                options.Add(loc["openFile"]);
+                if (previewLabel != null) options.Add(previewLabel);
+                options.Add(openLabel);
                 if (message.IsReceivedFile) options.Add(loc["openFolder"]);
                 options.Add(loc["share"]);
             }
@@ -1019,7 +1118,9 @@ public partial class MainViewModel : ObservableObject
             if (picked == null) return;
             if (picked == deleteLabel)
                 await DeleteMessageAsync(message, page);
-            else if (picked == loc["openFile"])
+            else if (picked == previewLabel)
+                await ShowMediaAsync(message);
+            else if (picked == openLabel)
                 await SafeAsync("open file", () => files.OpenAsync(message.Location!, message.Text));
             else if (picked == loc["openFolder"])
                 await SafeAsync("open folder", () => files.ShowInFolderAsync(message.Location!));
@@ -1083,7 +1184,18 @@ public partial class MainViewModel : ObservableObject
         var page = Application.Current?.Windows.FirstOrDefault()?.Page;
         if (page == null) return;
         var loc = Loc.Instance;
-        var choice = await page.DisplayActionSheet(chat.Name, loc["cancel"], null, loc["deleteChat"]);
+        var choice = await page.DisplayActionSheet(chat.Name, loc["cancel"], null, loc["renameChat"], loc["deleteChat"]);
+        if (choice == loc["renameChat"])
+        {
+            var input = await page.DisplayPromptAsync(loc["renameChat"], loc["renameChatAsk"], loc["save"], loc["cancel"],
+                maxLength: 40, initialValue: chat.Name);
+            if (input == null) return;
+            var clean = LocalDevice.Clean(input);
+            chat.Alias = clean.Length == 0 || clean == chat.PeerName ? null : clean;
+            if (ReferenceEquals(chat, linkedChat) && session != null) session.ReceiveFolder = FolderFor(chat);
+            SaveHistory();
+            return;
+        }
         if (choice != loc["deleteChat"]) return;
         if (ReferenceEquals(chat, linkedChat))
         {
@@ -1117,6 +1229,9 @@ public partial class MainViewModel : ObservableObject
         ShowLog = !ShowLog;
         if (ShowLog) IsDrawerOpen = false;
     }
+
+    [RelayCommand]
+    void CloseLog() => ShowLog = false;
 
     [RelayCommand]
     async Task CopyLogAsync()

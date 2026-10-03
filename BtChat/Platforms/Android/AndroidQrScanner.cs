@@ -1,16 +1,12 @@
 namespace BtChat;
 
-public sealed class AndroidQrScanner : IQrScanner
+public sealed class AndroidQrScanner(IPermissionGate gate) : IQrScanner
 {
     public bool IsSupported => true;
 
     public async Task<string?> ScanAsync()
     {
-        var status = await Permissions.CheckStatusAsync<Permissions.Camera>();
-        if (status != PermissionStatus.Granted)
-            status = await Permissions.RequestAsync<Permissions.Camera>();
-        AppLog.Write("QR", $"camera permission={status}");
-        if (status != PermissionStatus.Granted) throw new PermissionException("camera permission denied");
+        if (!await gate.EnsureAsync(PermissionKind.Camera)) throw new PermissionException("camera permission denied");
 
         var page = Application.Current?.Windows.FirstOrDefault()?.Page
                    ?? throw new InvalidOperationException("no page to show the scanner on");

@@ -6,7 +6,8 @@ namespace BtChat;
 
 public sealed class Conversation : ObservableObject
 {
-    string name;
+    string peerName;
+    string? alias;
     bool isCurrent;
     bool isLinked;
     int unread;
@@ -14,27 +15,44 @@ public sealed class Conversation : ObservableObject
     public Conversation(string id, string name)
     {
         Id = id;
-        this.name = name;
+        peerName = name;
         Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(Preview));
     }
 
     public string Id { get; }
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
-    public string Name
+    public string PeerName
     {
-        get => name;
+        get => peerName;
         set
         {
-            if (SetProperty(ref name, value)) OnPropertyChanged(nameof(Initial));
+            if (SetProperty(ref peerName, value)) NotifyName();
         }
+    }
+
+    public string? Alias
+    {
+        get => alias;
+        set
+        {
+            if (SetProperty(ref alias, value)) NotifyName();
+        }
+    }
+
+    public string Name => string.IsNullOrWhiteSpace(alias) ? peerName : alias;
+
+    void NotifyName()
+    {
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Initial));
     }
 
     public string Initial
     {
         get
         {
-            var text = name.Trim();
+            var text = Name.Trim();
             return text.Length == 0 ? "?" : StringInfo.GetNextTextElement(text).ToUpperInvariant();
         }
     }

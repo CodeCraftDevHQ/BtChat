@@ -7,13 +7,18 @@ namespace BtChat;
 
 public sealed class AndroidKeepAlive : IKeepAlive
 {
+    readonly IPermissionGate gate;
     readonly object gate = new();
     bool running;
     string? lastText;
 
     public event Action? ExitRequested;
 
-    public AndroidKeepAlive() => ConnectionService.TaskRemoved += () => ExitRequested?.Invoke();
+    public AndroidKeepAlive(IPermissionGate gate)
+    {
+        this.gate = gate;
+        ConnectionService.TaskRemoved += () => ExitRequested?.Invoke();
+    }
 
     public bool CanOpenBatterySettings => true;
 
@@ -40,15 +45,6 @@ public sealed class AndroidKeepAlive : IKeepAlive
             }
             try
             {
-                Start(new Intent(Settings.ActionRequestIgnoreBatteryOptimizations, AndroidUri.Parse("package:" + package)));
-                return Task.CompletedTask;
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("KEEPALIVE", "direct battery dialog unavailable", ex);
-            }
-            try
-            {
                 Start(new Intent(Settings.ActionIgnoreBatteryOptimizationSettings));
                 return Task.CompletedTask;
             }
@@ -68,13 +64,10 @@ public sealed class AndroidKeepAlive : IKeepAlive
     public async Task EnsurePermissionAsync()
     {
         // Android 13+ hides the foreground-service notification until this is granted.
-        if (!OperatingSystem.IsAndroidVersionAtLeast(33)) return;
         try
         {
-            var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
-            if (status != PermissionStatus.Granted)
-                status = await Permissions.RequestAsync<Permissions.PostNotifications>();
-            AppLog.Write("KEEPALIVE", $"notification permission={status}");
+            var granted = await gate.EnsureAsync(PermissionKind.Notifications);
+            AppLog.Write("KEEPALIVE", $"notification permission granted={granted}");
         }
         catch (Exception ex)
         {

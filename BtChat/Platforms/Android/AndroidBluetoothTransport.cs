@@ -17,18 +17,36 @@ public class AndroidBluetoothTransport : IBluetoothTransport
 
     BluetoothServerSocket? server;
 
-    public async Task<bool> EnsurePermissionsAsync()
+    public async Task<BtState> GetStateAsync()
     {
-        var status = await Permissions.CheckStatusAsync<BluetoothPermission>();
-        AppLog.Write("BT-AND", $"permission status={status}");
-        if (status != PermissionStatus.Granted)
-        {
-            status = await Permissions.RequestAsync<BluetoothPermission>();
-            AppLog.Write("BT-AND", $"permission after request={status}");
-        }
         var adapter = BluetoothAdapter.DefaultAdapter;
-        AppLog.Write("BT-AND", $"adapter present={adapter != null} enabled={adapter?.IsEnabled}");
-        return status == PermissionStatus.Granted && adapter?.IsEnabled == true;
+        if (adapter == null) return BtState.Unavailable;
+        var status = await Permissions.CheckStatusAsync<BluetoothPermission>();
+        var state = status != PermissionStatus.Granted ? BtState.NoPermission : adapter.IsEnabled ? BtState.Ready : BtState.Off;
+        AppLog.Write("BT-AND", $"state={state}");
+        return state;
+    }
+
+    public async Task<bool> EnableAsync()
+    {
+        var activity = Platform.CurrentActivity;
+        if (activity == null) return false;
+        var result = new TaskCompletionSource<bool>();
+        MainActivity.EnableBluetoothResult = result;
+        try
+        {
+            activity.StartActivityForResult(new Android.Content.Intent(BluetoothAdapter.ActionRequestEnable), MainActivity.EnableBluetoothRequest);
+            return await result.Task;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("BT-AND", "enable request failed", ex);
+            return false;
+        }
+        finally
+        {
+            MainActivity.EnableBluetoothResult = null;
+        }
     }
 
     public Task<IReadOnlyList<BtDevice>> GetPairedDevicesAsync()

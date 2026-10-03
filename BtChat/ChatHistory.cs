@@ -29,6 +29,7 @@ public sealed class StoredChat
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string? Alias { get; set; }
     public List<StoredMessage> Messages { get; set; } = new();
 }
 
@@ -78,7 +79,7 @@ public static class ChatHistory
 
     static Conversation Restore(StoredChat stored)
     {
-        var chat = new Conversation(stored.Id, stored.Name);
+        var chat = new Conversation(stored.Id, stored.Name) { Alias = stored.Alias };
         foreach (var m in stored.Messages) chat.Messages.Add(ChatMessage.Restore(m));
         return chat;
     }
@@ -88,7 +89,8 @@ public static class ChatHistory
         var snapshot = chats.Select(c => new StoredChat
         {
             Id = c.Id,
-            Name = c.Name,
+            Name = c.PeerName,
+            Alias = c.Alias,
             Messages = c.Messages.Where(m => !m.ShowProgress).Select(StoredMessage.From).ToList()
         }).ToList();
         var path = ChatsPath;

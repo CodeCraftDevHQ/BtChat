@@ -2,6 +2,7 @@ namespace BtChat;
 
 public partial class MainPage : ContentPage
 {
+    const double WideThreshold = 900;
     readonly MainViewModel vm;
 
     public MainPage(MainViewModel vm)
@@ -28,14 +29,25 @@ public partial class MainPage : ContentPage
     void FitDrawer()
     {
         if (Width <= 0) return;
-        var width = Math.Clamp(Width * 0.86, 260, 340);
-        if (Math.Abs(Drawer.WidthRequest - width) < 0.5) return;
+        LogCard.WidthRequest = Math.Max(240, Math.Min(520, Width - 32));
+        LogCard.HeightRequest = Math.Clamp(Height * 0.78, 240, 560);
+        var wide = Width >= WideThreshold;
+        if (vm.IsWide != wide) vm.IsWide = wide;
+        var width = wide ? 340 : Math.Clamp(Width * 0.86, 260, 340);
         Drawer.WidthRequest = width;
-        if (!vm.IsDrawerOpen) Drawer.TranslationX = ClosedOffset;
+        if (wide)
+        {
+            Drawer.TranslationX = 0;
+            MainArea.Margin = new Thickness(width, 0, 0, 0);
+            return;
+        }
+        MainArea.Margin = new Thickness(0);
+        Drawer.TranslationX = vm.IsDrawerOpen ? 0 : ClosedOffset;
     }
 
     async Task AnimateDrawerAsync()
     {
+        if (vm.IsWide) return;
         var target = vm.IsDrawerOpen ? 0 : ClosedOffset;
         await Drawer.TranslateToAsync(target, 0, 220, Easing.CubicOut);
     }
@@ -49,7 +61,12 @@ public partial class MainPage : ContentPage
 
     protected override bool OnBackButtonPressed()
     {
-        if (!vm.IsDrawerOpen) return base.OnBackButtonPressed();
+        if (vm.ShowLog)
+        {
+            vm.ShowLog = false;
+            return true;
+        }
+        if (!vm.IsDrawerOpen || vm.IsWide) return base.OnBackButtonPressed();
         vm.IsDrawerOpen = false;
         return true;
     }

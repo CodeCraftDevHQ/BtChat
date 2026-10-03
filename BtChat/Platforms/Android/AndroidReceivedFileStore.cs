@@ -7,7 +7,7 @@ using AndroidUri = Android.Net.Uri;
 
 namespace BtChat;
 
-public sealed class AndroidReceivedFileStore : IReceivedFileStore
+public sealed class AndroidReceivedFileStore(IPermissionGate gate) : IReceivedFileStore
 {
     const string FolderName = "BtChat";
     const string ExternalStorageAuthority = "com.android.externalstorage.documents";
@@ -26,10 +26,15 @@ public sealed class AndroidReceivedFileStore : IReceivedFileStore
     public async Task EnsureReadyAsync()
     {
         if (OperatingSystem.IsAndroidVersionAtLeast(29)) return;
-        var status = await Permissions.CheckStatusAsync<Permissions.StorageWrite>();
-        if (status != PermissionStatus.Granted)
-            status = await Permissions.RequestAsync<Permissions.StorageWrite>();
-        AppLog.Write("FILES", $"storage permission={status}");
+        var granted = await gate.EnsureAsync(PermissionKind.Storage);
+        AppLog.Write("FILES", $"storage permission granted={granted}");
+    }
+
+    public Task<Stream> OpenReadAsync(string location)
+    {
+        if (!IsContentUri(location)) return Task.FromResult<Stream>(File.OpenRead(location));
+        var stream = Ctx.ContentResolver!.OpenInputStream(AndroidUri.Parse(location)!) ?? throw new IOException("cannot open " + location);
+        return Task.FromResult<Stream>(stream);
     }
 
     public Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct) =>

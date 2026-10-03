@@ -29,6 +29,7 @@ public sealed class ChatSession : IDisposable
 
     public string? PeerId { get; private set; }
     public string? PeerName { get; private set; }
+    public volatile string? ReceiveFolder;
 
     public ChatSession(Stream stream, IReceivedFileStore store, string name)
     {
@@ -155,7 +156,7 @@ public sealed class ChatSession : IDisposable
                         break;
                     }
                     case FramePing:
-                        AppLog.Write("SESSION", $"{name} ping rx");
+                        AppLog.Verbose("SESSION", $"{name} ping rx");
                         break;
                     case FrameText:
                         AppLog.Write("SESSION", $"{name} text rx bytes={length}");
@@ -183,7 +184,7 @@ public sealed class ChatSession : IDisposable
                     case FrameFileBegin:
                     {
                         if (payload.Length < 4 || !incoming.TryGetValue(BinaryPrimitives.ReadUInt32LittleEndian(payload), out var item)) break;
-                        item.File = await store.CreateAsync(LocalDevice.SafeFolder(PeerName), item.Name, ct);
+                        item.File = await store.CreateAsync(ReceiveFolder ?? LocalDevice.SafeFolder(PeerName), item.Name, ct);
                         AppLog.Write("SESSION", $"{name} file rx start {item.File.Name}");
                         item.Message.Begin(item.File.Name, item.File.Location, item.Expected);
                         break;
@@ -270,7 +271,7 @@ public sealed class ChatSession : IDisposable
             {
                 await Task.Delay(Protocol.PingIntervalMs, ct);
                 await WriteFrameAsync(FramePing, ReadOnlyMemory<byte>.Empty, ct);
-                AppLog.Write("SESSION", $"{name} ping tx");
+                AppLog.Verbose("SESSION", $"{name} ping tx");
             }
         }
         catch (OperationCanceledException)

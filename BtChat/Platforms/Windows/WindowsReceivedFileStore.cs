@@ -32,6 +32,8 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
 
     public Task EnsureReadyAsync() => Task.CompletedTask;
 
+    public Task<Stream> OpenReadAsync(string location) => Task.FromResult<Stream>(File.OpenRead(location));
+
     public Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct)
     {
         var dir = TargetDir(folder);

@@ -9,10 +9,15 @@ public static class MauiProgram
     {
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
+#if ANDROID || WINDOWS
+        builder.ConfigureMauiHandlers(handlers => handlers.AddHandler<MediaPlayerView, MediaPlayerViewHandler>());
+#endif
 #if ANDROID
+        builder.Services.AddSingleton<IPermissionGate, AndroidPermissionGate>();
         builder.Services.AddSingleton<IBluetoothTransport, AndroidBluetoothTransport>();
         builder.Services.AddSingleton<IReceivedFileStore, AndroidReceivedFileStore>();
 #elif WINDOWS
+        builder.Services.AddSingleton<IPermissionGate, DefaultPermissionGate>();
         builder.Services.AddSingleton<IBluetoothTransport, WindowsBluetoothTransport>();
         builder.Services.AddSingleton<IReceivedFileStore, WindowsReceivedFileStore>();
 #endif

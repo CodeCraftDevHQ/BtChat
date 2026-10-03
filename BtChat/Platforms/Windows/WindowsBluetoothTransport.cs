@@ -15,13 +15,15 @@ public class WindowsBluetoothTransport : IBluetoothTransport
     RfcommServiceProvider? provider;
     StreamSocketListener? listener;
 
-    public async Task<bool> EnsurePermissionsAsync()
+    public Task<bool> EnableAsync() => Task.FromResult(false);
+
+    public async Task<BtState> GetStateAsync()
     {
         var adapter = await Windows.Devices.Bluetooth.BluetoothAdapter.GetDefaultAsync();
         AppLog.Write("BT-WIN", adapter == null
             ? "no bluetooth adapter"
             : $"adapter classic={adapter.IsClassicSupported} le={adapter.IsLowEnergySupported} central={adapter.IsCentralRoleSupported} peripheral={adapter.IsPeripheralRoleSupported}");
-        return adapter != null;
+        return adapter != null ? BtState.Ready : BtState.Unavailable;
     }
 
     public async Task<IReadOnlyList<BtDevice>> GetPairedDevicesAsync()

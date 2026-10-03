@@ -22,7 +22,7 @@ public class ChatMessage : ObservableObject
         get => text;
         set
         {
-            if (SetProperty(ref text, value)) OnPropertyChanged(nameof(Display));
+            if (SetProperty(ref text, value)) NotifyMedia();
         }
     }
     public bool IsMine { get; init; }
@@ -33,9 +33,72 @@ public class ChatMessage : ObservableObject
     public bool IsReceivedFile => IsFile && !IsMine;
     public bool HasMenu => IsText || (IsFile && !ShowProgress);
     public bool CanCancel => IsMine && IsFile && ShowProgress;
-    public string? Location { get => location; set => SetProperty(ref location, value); }
+    public string? Location
+    {
+        get => location;
+        set
+        {
+            if (SetProperty(ref location, value)) NotifyMedia();
+        }
+    }
+
+    public static Func<string, Task<Stream>>? Opener { get; set; }
+
+    public MediaKind Kind => IsFile ? MediaKinds.FromName(text) : MediaKind.None;
+    public bool IsMedia => Kind != MediaKind.None;
+    public bool IsAudio => Kind == MediaKind.Audio;
+    public bool IsVideo => Kind == MediaKind.Video;
+    public bool IsImage => Kind == MediaKind.Image;
+    public bool Ready => IsFile && location != null && !showProgress && !failed;
+    public bool CanPreview => Ready && IsMedia;
+    public bool ShowImage => Ready && IsImage;
+    public bool ShowVideoBox => Ready && IsVideo;
+
+    string? thumbFor;
+    ImageSource? thumb;
+
+    public ImageSource? Thumb
+    {
+        get
+        {
+            if (!ShowImage) return null;
+            if (thumb != null && thumbFor == location) return thumb;
+            var target = location!;
+            thumbFor = target;
+            thumb = new StreamImageSource
+            {
+                Stream = async _ =>
+                {
+                    try
+                    {
+                        return await Opener!(target);
+                    }
+                    catch
+                    {
+                        return new MemoryStream();
+                    }
+                }
+            };
+            return thumb;
+        }
+    }
+
+    void NotifyMedia()
+    {
+        OnPropertyChanged(nameof(Display));
+        OnPropertyChanged(nameof(CanPreview));
+        OnPropertyChanged(nameof(ShowImage));
+        OnPropertyChanged(nameof(ShowVideoBox));
+        OnPropertyChanged(nameof(Thumb));
+    }
     public DateTime Time { get; init; } = DateTime.Now;
-    public string Display => IsFile ? "📎 " + Text : Text;
+    public string Display => !IsFile ? Text : Kind switch
+    {
+        MediaKind.Image => "🖼 " + Text,
+        MediaKind.Video => "🎬 " + Text,
+        MediaKind.Audio => "🎵 " + Text,
+        _ => "📎 " + Text
+    };
     public string TimeText => Time.ToString("HH:mm");
     public LayoutOptions Align => IsMine ? LayoutOptions.End : LayoutOptions.Start;
     public Color Bubble => IsMine ? Color.FromArgb("#DCF8C6") : Color.FromArgb("#ECECEC");
@@ -60,6 +123,7 @@ public class ChatMessage : ObservableObject
             {
                 OnPropertyChanged(nameof(HasMenu));
                 OnPropertyChanged(nameof(CanCancel));
+                NotifyMedia();
             }
         }
     }
@@ -68,7 +132,11 @@ public class ChatMessage : ObservableObject
         get => failed;
         private set
         {
-            if (SetProperty(ref failed, value)) OnPropertyChanged(nameof(HasMenu));
+            if (SetProperty(ref failed, value))
+            {
+                OnPropertyChanged(nameof(HasMenu));
+                NotifyMedia();
+            }
         }
     }
     public string? FailKey => failKey;
@@ -174,9 +242,18 @@ public class ChatMessage : ObservableObject
     }
 }
 
+public enum BtState
+{
+    Ready,
+    NoPermission,
+    Off,
+    Unavailable
+}
+
 public interface IBluetoothTransport
 {
-    Task<bool> EnsurePermissionsAsync();
+    Task<BtState> GetStateAsync();
+    Task<bool> EnableAsync();
     Task<IReadOnlyList<BtDevice>> GetPairedDevicesAsync();
     Task<Stream> ConnectAsync(BtDevice device, CancellationToken ct);
     Task<Stream> AcceptAsync(CancellationToken ct);
@@ -194,6 +271,7 @@ public sealed class ReceivedFile
 public interface IReceivedFileStore
 {
     Task EnsureReadyAsync();
+    Task<Stream> OpenReadAsync(string location);
     Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct);
     Task OpenAsync(string location, string name);
     Task ShowInFolderAsync(string location);
