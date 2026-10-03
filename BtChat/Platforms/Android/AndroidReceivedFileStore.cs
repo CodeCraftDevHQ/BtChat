@@ -30,6 +30,33 @@ public sealed class AndroidReceivedFileStore(IPermissionGate gate) : IReceivedFi
         AppLog.Write("FILES", $"storage permission granted={granted}");
     }
 
+    public Task<byte[]?> GetVideoThumbnailAsync(string location) => Task.Run<byte[]?>(() =>
+    {
+        var retriever = new Android.Media.MediaMetadataRetriever();
+        try
+        {
+            if (IsContentUri(location)) retriever.SetDataSource(Ctx, AndroidUri.Parse(location)!);
+            else retriever.SetDataSource(location);
+            using var frame = retriever.GetFrameAtTime(1_000_000, Android.Media.Option.ClosestSync);
+            if (frame == null) return null;
+            var width = 480;
+            var height = Math.Max(1, frame.Height * width / Math.Max(1, frame.Width));
+            using var scaled = Android.Graphics.Bitmap.CreateScaledBitmap(frame, width, height, true)!;
+            using var output = new MemoryStream();
+            scaled.Compress(Android.Graphics.Bitmap.CompressFormat.Jpeg!, 80, output);
+            return output.ToArray();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("MEDIA", "video thumbnail failed", ex);
+            return null;
+        }
+        finally
+        {
+            retriever.Release();
+        }
+    });
+
     public Task<Stream> OpenReadAsync(string location)
     {
         if (!IsContentUri(location)) return Task.FromResult<Stream>(File.OpenRead(location));

@@ -32,6 +32,25 @@ public sealed class WindowsReceivedFileStore : IReceivedFileStore
 
     public Task EnsureReadyAsync() => Task.CompletedTask;
 
+    public async Task<byte[]?> GetVideoThumbnailAsync(string location)
+    {
+        try
+        {
+            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(location);
+            using var thumbnail = await file.GetThumbnailAsync(Windows.Storage.FileProperties.ThumbnailMode.VideosView, 480);
+            if (thumbnail == null || thumbnail.Size == 0) return null;
+            using var stream = thumbnail.AsStreamForRead();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            return memory.ToArray();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("MEDIA", "video thumbnail failed", ex);
+            return null;
+        }
+    }
+
     public Task<Stream> OpenReadAsync(string location) => Task.FromResult<Stream>(File.OpenRead(location));
 
     public Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct)

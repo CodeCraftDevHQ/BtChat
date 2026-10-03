@@ -12,6 +12,8 @@ public sealed class StoredMessage
     public DateTime Time { get; set; }
     public string? FailKey { get; set; }
     public string SenderName { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public double DurationSeconds { get; set; }
 
     public static StoredMessage From(ChatMessage m) => new()
     {
@@ -21,7 +23,9 @@ public sealed class StoredMessage
         Location = m.Location,
         Time = m.Time,
         FailKey = m.FailKey,
-        SenderName = m.SenderName
+        SenderName = m.SenderName,
+        SizeBytes = m.SizeBytes,
+        DurationSeconds = m.DurationSeconds
     };
 }
 

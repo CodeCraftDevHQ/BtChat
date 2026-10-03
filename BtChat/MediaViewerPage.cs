@@ -2,25 +2,32 @@ namespace BtChat;
 
 public sealed class MediaViewerPage : ContentPage
 {
+    const double SwipeDistance = 80;
+
     readonly ChatMessage message;
     readonly IReceivedFileStore files;
+    readonly IReadOnlyList<ChatMessage>? gallery;
     readonly MediaPlayerView? player;
     readonly Image? image;
+    readonly Label title;
+    readonly Button? previous;
+    readonly Button? next;
+    int index;
     double startScale = 1;
     double startX;
     double startY;
 
-    public MediaViewerPage(ChatMessage message, IReceivedFileStore files)
+    public MediaViewerPage(ChatMessage message, IReceivedFileStore files, IReadOnlyList<ChatMessage>? gallery = null)
     {
         this.message = message;
         this.files = files;
-        var loc = Loc.Instance;
-        FlowDirection = loc.Flow;
+        this.gallery = gallery is { Count: > 1 } ? gallery : null;
+        index = this.gallery == null ? 0 : Math.Max(0, this.gallery.ToList().IndexOf(message));
+        FlowDirection = Loc.Instance.Flow;
         BackgroundColor = Colors.Black;
 
-        var title = new Label
+        title = new Label
         {
-            Text = message.Text,
             TextColor = Colors.White,
             FontAttributes = FontAttributes.Bold,
             LineBreakMode = LineBreakMode.TailTruncation,
@@ -39,10 +46,12 @@ public sealed class MediaViewerPage : ContentPage
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto)
             },
             Padding = new Thickness(12, 8),
-            ColumnSpacing = 6
+            ColumnSpacing = 4
         };
         header.Add(title, 0, 0);
 
@@ -51,7 +60,6 @@ public sealed class MediaViewerPage : ContentPage
         {
             image = new Image
             {
-                Source = message.Thumb,
                 Aspect = Aspect.AspectFit,
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Fill
@@ -73,6 +81,16 @@ public sealed class MediaViewerPage : ContentPage
             zoomOut.Clicked += (_, _) => Zoom(1 / 1.4);
             header.Add(zoomOut, 1, 0);
             header.Add(zoomIn, 2, 0);
+
+            if (this.gallery != null)
+            {
+                previous = HeaderButton("‹");
+                previous.Clicked += (_, _) => Step(-1);
+                next = HeaderButton("›");
+                next.Clicked += (_, _) => Step(1);
+                header.Add(previous, 3, 0);
+                header.Add(next, 4, 0);
+            }
         }
         else
         {
@@ -95,8 +113,8 @@ public sealed class MediaViewerPage : ContentPage
                 });
             }
         }
-        header.Add(openWith, 3, 0);
-        header.Add(close, 4, 0);
+        header.Add(openWith, 5, 0);
+        header.Add(close, 6, 0);
 
         var root = new Grid
         {
@@ -109,7 +127,10 @@ public sealed class MediaViewerPage : ContentPage
         root.Add(header, 0, 0);
         root.Add(body, 0, 1);
         Content = root;
+        ShowCurrent();
     }
+
+    ChatMessage Current => gallery != null ? gallery[index] : message;
 
     static Button HeaderButton(string text) => new()
     {
@@ -117,12 +138,38 @@ public sealed class MediaViewerPage : ContentPage
         TextColor = Colors.White,
         BackgroundColor = Colors.Transparent,
         FontSize = 20,
-        Padding = new Thickness(10, 0),
-        WidthRequest = 44,
+        Padding = new Thickness(6, 0),
+        WidthRequest = 40,
         HeightRequest = 40,
         MinimumWidthRequest = 0,
         MinimumHeightRequest = 0
     };
+
+    void ShowCurrent()
+    {
+        var current = Current;
+        title.Text = gallery != null ? $"{current.Text}  ({index + 1}/{gallery.Count})" : current.Text;
+        if (image != null)
+        {
+            ResetZoom();
+            image.Source = current.Thumb;
+        }
+        if (previous != null) previous.Opacity = index > 0 ? 1 : 0.3;
+        if (next != null && gallery != null) next.Opacity = index < gallery.Count - 1 ? 1 : 0.3;
+    }
+
+    void Step(int delta)
+    {
+        if (gallery == null || image == null) return;
+        var target = index + delta;
+        if (target < 0 || target >= gallery.Count)
+        {
+            _ = image.TranslateToAsync(0, 0, 150);
+            return;
+        }
+        index = target;
+        ShowCurrent();
+    }
 
     protected override void OnAppearing()
     {
@@ -154,10 +201,11 @@ public sealed class MediaViewerPage : ContentPage
 
     async Task OpenExternalAsync()
     {
-        if (message.Location == null) return;
+        var current = Current;
+        if (current.Location == null) return;
         try
         {
-            await files.OpenAsync(message.Location, message.Text);
+            await files.OpenAsync(current.Location, current.Text);
         }
         catch (Exception ex)
         {
@@ -200,16 +248,35 @@ public sealed class MediaViewerPage : ContentPage
 
     void OnPan(object? sender, PanUpdatedEventArgs e)
     {
-        if (image == null || image.Scale <= 1) return;
+        if (image == null) return;
+        if (image.Scale > 1)
+        {
+            switch (e.StatusType)
+            {
+                case GestureStatus.Started:
+                    startX = image.TranslationX;
+                    startY = image.TranslationY;
+                    break;
+                case GestureStatus.Running:
+                    image.TranslationX = startX + e.TotalX;
+                    image.TranslationY = startY + e.TotalY;
+                    break;
+            }
+            return;
+        }
         switch (e.StatusType)
         {
-            case GestureStatus.Started:
-                startX = image.TranslationX;
-                startY = image.TranslationY;
-                break;
             case GestureStatus.Running:
-                image.TranslationX = startX + e.TotalX;
-                image.TranslationY = startY + e.TotalY;
+                if (gallery != null) image.TranslationX = e.TotalX;
+                break;
+            case GestureStatus.Completed:
+                if (gallery != null && Math.Abs(e.TotalX) > SwipeDistance && Math.Abs(e.TotalX) > Math.Abs(e.TotalY))
+                    Step(e.TotalX < 0 ? 1 : -1);
+                else
+                    _ = image.TranslateToAsync(0, 0, 150);
+                break;
+            case GestureStatus.Canceled:
+                image.TranslationX = 0;
                 break;
         }
     }

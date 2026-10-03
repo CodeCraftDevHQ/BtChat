@@ -44,10 +44,14 @@
                                     <Label Text="{Binding Display}" TextColor="Black" />
                                     <Image Source="{Binding Thumb}" IsVisible="{Binding ShowImage}"
                                            WidthRequest="220" HeightRequest="160" Aspect="AspectFill" HorizontalOptions="Start" />
-                                    <Border IsVisible="{Binding ShowVideoBox}" BackgroundColor="#222222" Stroke="Transparent"
-                                            StrokeShape="RoundRectangle 8" WidthRequest="220" HeightRequest="110" HorizontalOptions="Start">
-                                        <Label Text="▶" TextColor="White" FontSize="36" HorizontalOptions="Center" VerticalOptions="Center" />
-                                    </Border>
+                                    <Grid IsVisible="{Binding ShowVideoBox}" BackgroundColor="#222222" WidthRequest="220" HeightRequest="124"
+                                          HorizontalOptions="Start">
+                                        <Image Source="{Binding VideoThumb}" Aspect="AspectFill" />
+                                        <Border BackgroundColor="#99000000" Stroke="Transparent" StrokeShape="RoundRectangle 24"
+                                                WidthRequest="48" HeightRequest="48" HorizontalOptions="Center" VerticalOptions="Center">
+                                            <Label Text="▶" TextColor="White" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                    </Grid>
                                     <ProgressBar Progress="{Binding Progress}" IsVisible="{Binding ShowProgress}"
                                                  MinimumWidthRequest="200" />
                                     <Label Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
@@ -58,6 +62,7 @@
                                             HorizontalOptions="Start"
                                             Command="{Binding CancelFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                             CommandParameter="{Binding .}" />
+                                    <Label Text="{Binding InfoText}" IsVisible="{Binding HasInfo}" FontSize="11" TextColor="#444444" />
                                     <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
                                 </VerticalStackLayout>
                                 <Button Grid.Column="1" Text="⋮" FontSize="20" TextColor="Gray"
@@ -151,23 +156,31 @@
 
                         <BoxView HeightRequest="1" Color="Gray" Opacity="0.3" Margin="0,8,0,0" />
                         <Label Text="{Binding [connSettings], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" />
-                        <Picker Title="{Binding [mode], Source={x:Static local:Loc.Instance}}"
-                                SelectedIndex="{Binding ModeIndex}">
-                            <Picker.ItemsSource>
-                                <x:Array Type="{x:Type x:String}">
-                                    <x:String>Bluetooth</x:String>
-                                    <x:String>Wi-Fi / IP</x:String>
-                                </x:Array>
-                            </Picker.ItemsSource>
-                        </Picker>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <Picker Title="{Binding [mode], Source={x:Static local:Loc.Instance}}"
+                                    SelectedIndex="{Binding ModeIndex}">
+                                <Picker.ItemsSource>
+                                    <x:Array Type="{x:Type x:String}">
+                                        <x:String>Bluetooth</x:String>
+                                        <x:String>Wi-Fi / IP</x:String>
+                                    </x:Array>
+                                </Picker.ItemsSource>
+                            </Picker>
+                            <Button Grid.Column="1" Text="?" FontAttributes="Bold" FontSize="14" Padding="0" WidthRequest="36" HeightRequest="36"
+                                MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
+                                Command="{Binding ShowHelpCommand}" CommandParameter="mode" />
+                        </Grid>
                         <Grid>
                             <VerticalStackLayout Spacing="6" IsVisible="{Binding IsBluetoothMode}">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                     <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
                                             SelectedItem="{Binding SelectedDevice}"
                                             Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
                                     <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
                                             Command="{Binding RefreshCommand}" />
+                                    <Button Grid.Column="2" Text="?" FontAttributes="Bold" FontSize="14" Padding="0" WidthRequest="36" HeightRequest="36"
+                                MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
+                                Command="{Binding ShowHelpCommand}" CommandParameter="bluetooth" />
                                 </Grid>
                                 <Grid>
                                     <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
@@ -177,15 +190,24 @@
                                 </Grid>
                             </VerticalStackLayout>
                             <VerticalStackLayout Spacing="6" IsVisible="{Binding IsLanMode}">
-                                <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
+                                    <Button Grid.Column="1" Text="?" FontAttributes="Bold" FontSize="14" Padding="0" WidthRequest="36" HeightRequest="36"
+                                MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
+                                Command="{Binding ShowHelpCommand}" CommandParameter="ip" />
+                                </Grid>
                                 <Grid>
                                     <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
                                             Command="{Binding ConnectLanCommand}" IsVisible="{Binding IsNotLinked}" />
                                     <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
                                             Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
                                 </Grid>
-                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6"
+                                <Grid ColumnDefinitions="*,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6"
                                       IsVisible="{Binding IsNotLinked}">
+                                    <Button Grid.Column="2" Grid.RowSpan="2" Text="?" FontAttributes="Bold" FontSize="14" Padding="0"
+                                            WidthRequest="36" HeightRequest="36" MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                            CornerRadius="18" VerticalOptions="Center"
+                                            Command="{Binding ShowHelpCommand}" CommandParameter="quick" />
                                     <Button Text="{Binding [search], Source={x:Static local:Loc.Instance}}"
                                             Command="{Binding SearchDevicesCommand}" IsEnabled="{Binding IsNotSearching}" />
                                     <Button Grid.Column="1" Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"

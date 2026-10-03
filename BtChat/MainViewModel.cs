@@ -310,6 +310,7 @@ public partial class MainViewModel : ObservableObject
         this.transport = transport;
         this.files = files;
         ChatMessage.Opener = files.OpenReadAsync;
+        ChatMessage.VideoThumbOpener = files.GetVideoThumbnailAsync;
         this.tcp = tcp;
         Conversations.CollectionChanged += (_, _) =>
         {
@@ -939,6 +940,7 @@ public partial class MainViewModel : ObservableObject
             await using var source = await item.File.Open();
             var size = item.Size;
             try { if (source.CanSeek) size = source.Length; } catch { }
+            message.MarkStart(size);
             await Task.Run(() => item.Session.SendFileAsync(item.Id, source, (done, total) => message.Report(done, total), size, item.Cts.Token));
             message.Complete();
         }
@@ -1089,7 +1091,10 @@ public partial class MainViewModel : ObservableObject
     {
         var page = Application.Current?.Windows.FirstOrDefault()?.Page;
         if (page == null) return;
-        await SafeAsync("show media", () => page.Navigation.PushModalAsync(new MediaViewerPage(message, files)));
+        IReadOnlyList<ChatMessage>? gallery = null;
+        if (message.IsImage)
+            gallery = ChatOf(message)?.Messages.Where(m => m.CanPreview && m.IsImage).ToList();
+        await SafeAsync("show media", () => page.Navigation.PushModalAsync(new MediaViewerPage(message, files, gallery)));
     }
 
     [RelayCommand]
@@ -1232,6 +1237,24 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     void CloseLog() => ShowLog = false;
+
+    [RelayCommand]
+    async Task ShowHelpAsync(string? topic)
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        var key = topic switch
+        {
+            "mode" => IsLanMode ? "Wifi" : "Bluetooth",
+            "bluetooth" => "Bluetooth",
+            "ip" => "Ip",
+            "quick" => "Quick",
+            _ => null
+        };
+        if (key == null) return;
+        var loc = Loc.Instance;
+        await page.DisplayAlert(loc["help" + key + "Title"], loc["help" + key], loc["ok"]);
+    }
 
     [RelayCommand]
     async Task CopyLogAsync()

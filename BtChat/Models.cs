@@ -56,6 +56,42 @@ public class ChatMessage : ObservableObject
 
     string? thumbFor;
     ImageSource? thumb;
+    string? videoThumbFor;
+    ImageSource? videoThumb;
+    byte[]? videoThumbBytes;
+
+    public static Func<string, Task<byte[]?>>? VideoThumbOpener { get; set; }
+
+    public ImageSource? VideoThumb
+    {
+        get
+        {
+            if (!ShowVideoBox) return null;
+            if (videoThumb != null && videoThumbFor == location) return videoThumb;
+            var target = location!;
+            videoThumbFor = target;
+            videoThumbBytes = null;
+            videoThumb = new StreamImageSource
+            {
+                Stream = async _ =>
+                {
+                    if (videoThumbBytes == null && VideoThumbOpener != null)
+                    {
+                        try
+                        {
+                            videoThumbBytes = await VideoThumbOpener(target);
+                        }
+                        catch
+                        {
+                            videoThumbBytes = null;
+                        }
+                    }
+                    return new MemoryStream(videoThumbBytes ?? Array.Empty<byte>());
+                }
+            };
+            return videoThumb;
+        }
+    }
 
     public ImageSource? Thumb
     {
@@ -90,6 +126,9 @@ public class ChatMessage : ObservableObject
         OnPropertyChanged(nameof(ShowImage));
         OnPropertyChanged(nameof(ShowVideoBox));
         OnPropertyChanged(nameof(Thumb));
+        OnPropertyChanged(nameof(VideoThumb));
+        OnPropertyChanged(nameof(InfoText));
+        OnPropertyChanged(nameof(HasInfo));
     }
     public DateTime Time { get; init; } = DateTime.Now;
     public string Display => !IsFile ? Text : Kind switch
@@ -112,6 +151,10 @@ public class ChatMessage : ObservableObject
     bool failed;
     string statusText = "";
     long lastKey = -1;
+    long lastDone;
+    long startTicks;
+    long sizeBytes;
+    double durationSeconds;
 
     public double Progress { get => progress; private set => SetProperty(ref progress, value); }
     public bool ShowProgress
@@ -140,6 +183,42 @@ public class ChatMessage : ObservableObject
         }
     }
     public string? FailKey => failKey;
+    public long SizeBytes => sizeBytes;
+    public double DurationSeconds => durationSeconds;
+
+    public string InfoText
+    {
+        get
+        {
+            if (!IsFile || showProgress) return "";
+            var parts = new List<string>();
+            if (sizeBytes > 0) parts.Add(FormatSize(sizeBytes));
+            if (durationSeconds > 0 && !failed) parts.Add(FormatDuration(durationSeconds));
+            return string.Join("  •  ", parts);
+        }
+    }
+
+    public bool HasInfo => InfoText.Length > 0;
+
+    static string FormatDuration(double seconds)
+    {
+        var loc = Loc.Instance;
+        if (seconds < 60)
+        {
+            var value = seconds < 10
+                ? seconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                : ((int)Math.Round(seconds)).ToString();
+            return value + " " + loc["secShort"];
+        }
+        var minutes = (int)(seconds / 60);
+        var rest = (int)Math.Round(seconds - minutes * 60);
+        if (rest == 60)
+        {
+            minutes++;
+            rest = 0;
+        }
+        return $"{minutes}:{rest:D2} {loc["minShort"]}";
+    }
     public bool HasStatus => statusText.Length > 0;
     public string StatusText
     {
@@ -153,6 +232,7 @@ public class ChatMessage : ObservableObject
     // total < 0 means the size is unknown: only the transferred bytes are shown.
     public void Report(long done, long total)
     {
+        lastDone = done;
         var key = total > 0 ? done * 100 / total : done / (256 * 1024);
         if (key == lastKey) return;
         lastKey = key;
@@ -186,10 +266,24 @@ public class ChatMessage : ObservableObject
             Location = fileLocation;
         });
         lastKey = -1;
+        MarkStart(expected);
         Report(0, expected);
     }
 
-    public void Complete() => OnUi(() =>
+    public void MarkStart(long size)
+    {
+        startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (size > 0) sizeBytes = size;
+    }
+
+    public void Complete()
+    {
+        if (startTicks != 0) durationSeconds = System.Diagnostics.Stopwatch.GetElapsedTime(startTicks).TotalSeconds;
+        if (sizeBytes <= 0) sizeBytes = lastDone;
+        CompleteOnUi();
+    }
+
+    void CompleteOnUi() => OnUi(() =>
     {
         Progress = 1;
         ShowProgress = false;
@@ -215,7 +309,9 @@ public class ChatMessage : ObservableObject
             IsFile = s.IsFile,
             Location = s.Location,
             Time = s.Time,
-            SenderName = s.SenderName
+            SenderName = s.SenderName,
+            sizeBytes = s.SizeBytes,
+            durationSeconds = s.DurationSeconds
         };
         if (s.IsFile && s.FailKey != null)
         {
@@ -272,6 +368,7 @@ public interface IReceivedFileStore
 {
     Task EnsureReadyAsync();
     Task<Stream> OpenReadAsync(string location);
+    Task<byte[]?> GetVideoThumbnailAsync(string location);
     Task<ReceivedFile> CreateAsync(string folder, string fileName, CancellationToken ct);
     Task OpenAsync(string location, string name);
     Task ShowInFolderAsync(string location);
