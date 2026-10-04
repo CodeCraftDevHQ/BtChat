@@ -455,6 +455,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (started) return;
         started = true;
+        await AskFirstLanguageAsync();
         AppLog.Write("APP", $"start {DeviceInfo.Current.Platform} {DeviceInfo.Current.VersionString} {DeviceInfo.Current.Manufacturer} {DeviceInfo.Current.Model}");
         UpdateAddresses("startup");
         _ = Task.Run(() => AcceptLoopAsync("tcp", tcp.AcceptAsync));
@@ -469,6 +470,25 @@ public partial class MainViewModel : ObservableObject
         if (interactive) Preferences.Default.Set("btPrompted", true);
         await EnsureBluetoothAsync(interactive);
         await ProcessSharedAsync();
+    }
+
+    async Task AskFirstLanguageAsync()
+    {
+        if (Loc.HasSavedLanguage) return;
+        try
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page != null)
+            {
+                var english = await page.DisplayAlert("Language / زبان", "Choose the app language\nزبان برنامه را انتخاب کنید", "English", "فارسی");
+                if (Loc.Instance.IsFa == english) ToggleLanguage();
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "language dialog failed", ex);
+        }
+        Loc.Instance.SaveChoice();
     }
 
     static async Task<bool> ConfirmAsync(string titleKey, string messageKey, string acceptKey)

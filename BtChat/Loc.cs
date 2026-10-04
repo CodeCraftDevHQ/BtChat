@@ -173,7 +173,27 @@ public sealed class Loc : INotifyPropertyChanged
 
     public bool IsFa { get; private set; } = SavedLanguageIsFa();
 
-    // The language chosen in Settings is remembered; the first start follows the phone language.
+    // The language chosen in the first-run dialog or in Settings is remembered; until then it is English.
+    public static bool HasSavedLanguage
+    {
+        get
+        {
+            try
+            {
+                return Preferences.Default.Get("lang", "") is "fa" or "en";
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public void SaveChoice()
+    {
+        try { Preferences.Default.Set("lang", IsFa ? "fa" : "en"); } catch { }
+    }
+
     static bool SavedLanguageIsFa()
     {
         try
@@ -185,7 +205,7 @@ public sealed class Loc : INotifyPropertyChanged
         catch
         {
         }
-        return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "fa";
+        return false;
     }
 
     public string this[string key] => table.TryGetValue(key, out var v) ? (IsFa ? v.Fa : v.En) : key;
@@ -197,7 +217,7 @@ public sealed class Loc : INotifyPropertyChanged
     public void Toggle()
     {
         IsFa = !IsFa;
-        try { Preferences.Default.Set("lang", IsFa ? "fa" : "en"); } catch { }
+        SaveChoice();
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
     }
 }
