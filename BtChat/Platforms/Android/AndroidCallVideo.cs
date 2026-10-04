@@ -154,7 +154,7 @@ public sealed class AndroidCallVideo : ICallVideo
             var nv21 = ToNv21(image, width, height);
             using var yuv = new YuvImage(nv21, ImageFormatType.Nv21, width, height, null);
             using var output = new MemoryStream();
-            yuv.CompressToJpeg(new Rect(0, 0, width, height), JpegQuality, output);
+            yuv.CompressToJpeg(new Android.Graphics.Rect(0, 0, width, height), JpegQuality, output);
             callback(new VideoFrame(output.ToArray(), (byte)(UprightDegrees() / 90)));
         }
         catch (Exception ex)
@@ -178,7 +178,7 @@ public sealed class AndroidCallVideo : ICallVideo
     }
 #pragma warning restore CA1422
 
-    static byte[] ToNv21(Image image, int width, int height)
+    static byte[] ToNv21(Android.Media.Image image, int width, int height)
     {
         var planes = image.GetPlanes()!;
         var nv21 = new byte[width * height * 3 / 2];
