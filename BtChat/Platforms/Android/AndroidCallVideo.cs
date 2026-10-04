@@ -151,14 +151,13 @@ public sealed class AndroidCallVideo : ICallVideo
             return;
         }
         if (image == null) return;
-        using var held = image;
-        var now = System.Environment.TickCount64;
-        if (now - lastFrameTicks < MinFrameGapMs) return;
-        lastFrameTicks = now;
-        var callback = onFrame;
-        if (callback == null) return;
         try
         {
+            var now = System.Environment.TickCount64;
+            if (now - lastFrameTicks < MinFrameGapMs) return;
+            lastFrameTicks = now;
+            var callback = onFrame;
+            if (callback == null) return;
             var width = image.Width;
             var height = image.Height;
             var nv21 = ToNv21(image, width, height);
@@ -170,6 +169,11 @@ public sealed class AndroidCallVideo : ICallVideo
         catch (Exception ex)
         {
             AppLog.Error("CALL", "camera frame failed", ex);
+        }
+        finally
+        {
+            try { image.Close(); } catch { }
+            try { image.Dispose(); } catch { }
         }
     }
 
