@@ -142,7 +142,7 @@ public sealed class AndroidCallVideo : ICallVideo
         using var image = source.AcquireLatestImage();
         if (image == null) return;
         if (!running) return;
-        var now = Environment.TickCount64;
+        var now = System.Environment.TickCount64;
         if (now - lastFrameTicks < MinFrameGapMs) return;
         lastFrameTicks = now;
         var callback = onFrame;
@@ -185,7 +185,7 @@ public sealed class AndroidCallVideo : ICallVideo
         var y = Read(planes[0].Buffer!);
         var yRow = planes[0].RowStride;
         for (var row = 0; row < height; row++)
-            Buffer.BlockCopy(y, row * yRow, nv21, row * width, width);
+            System.Buffer.BlockCopy(y, row * yRow, nv21, row * width, width);
 
         var u = Read(planes[1].Buffer!);
         var v = Read(planes[2].Buffer!);
