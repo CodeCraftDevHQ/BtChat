@@ -5,7 +5,9 @@ public enum PermissionKind
     Bluetooth,
     Camera,
     Notifications,
-    Storage
+    Storage,
+    Microphone,
+    CameraCapture
 }
 
 public interface IPermissionGate

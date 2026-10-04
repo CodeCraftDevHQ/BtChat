@@ -10,6 +10,9 @@ public partial class MainPage : ContentPage
         InitializeComponent();
         this.vm = vm;
         BindingContext = vm;
+        MediaButton.HoldDown += vm.MediaButtonDown;
+        MediaButton.HoldMoved += vm.MediaButtonMoved;
+        MediaButton.HoldUp += vm.MediaButtonUp;
         Drawer.TranslationX = vm.IsDrawerOpen ? 0 : ClosedOffset;
         vm.ScrollRequested += () => Dispatcher.Dispatch(ScrollToEnd);
         vm.PropertyChanged += (_, e) =>

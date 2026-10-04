@@ -6,6 +6,8 @@ public sealed class AndroidPermissionGate : IPermissionGate
     {
         PermissionKind.Bluetooth => OperatingSystem.IsAndroidVersionAtLeast(31) ? Run<BluetoothPermission>(kind) : Task.FromResult(true),
         PermissionKind.Camera => Run<Permissions.Camera>(kind),
+        PermissionKind.Microphone => Run<Permissions.Microphone>(kind),
+        PermissionKind.CameraCapture => Run<Permissions.Camera>(kind),
         PermissionKind.Notifications => OperatingSystem.IsAndroidVersionAtLeast(33) ? Run<Permissions.PostNotifications>(kind) : Task.FromResult(true),
         PermissionKind.Storage => OperatingSystem.IsAndroidVersionAtLeast(29) ? Task.FromResult(true) : Run<Permissions.StorageWrite>(kind),
         _ => Task.FromResult(true)

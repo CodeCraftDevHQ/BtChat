@@ -106,17 +106,34 @@
             </CollectionView>
             <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,2,0,0">
                 <Button Text="📎" FontSize="22" Padding="0" WidthRequest="44" HeightRequest="44"
-                        Style="{StaticResource QuietButton}"
+                        Style="{StaticResource QuietButton}" IsVisible="{Binding NotRecording}"
                         Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />
+                <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14,0" HeightRequest="46"
+                        StrokeShape="RoundRectangle 22" IsVisible="{Binding IsRecording}">
+                    <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                        <Label Text="●" TextColor="#E53935" FontSize="18" VerticalOptions="Center" />
+                        <Label Text="{Binding RecordTime}" FontSize="16" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label Text="{Binding RecordHint}" FontSize="13" TextColor="Gray" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
                 <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14,0"
-                        StrokeShape="RoundRectangle 22">
+                        StrokeShape="RoundRectangle 22" IsVisible="{Binding NotRecording}">
                     <Entry Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
                            Placeholder="{Binding DraftPlaceholder}" BackgroundColor="Transparent"
                            HeightRequest="44" />
                 </Border>
                 <Button Grid.Column="2" Text="↑" FontSize="22" FontAttributes="Bold" Padding="0"
                         WidthRequest="44" HeightRequest="44" CornerRadius="22"
-                        Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
+                        Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" IsVisible="{Binding ShowSend}" />
+                <local:HoldButton x:Name="MediaButton" Grid.Column="2" Text="{Binding MediaButtonText}" FontSize="22" Padding="0"
+                                  WidthRequest="44" HeightRequest="44" CornerRadius="22"
+                                  IsEnabled="{Binding CanSend}" IsVisible="{Binding ShowMediaButton}">
+                    <local:HoldButton.Triggers>
+                        <DataTrigger TargetType="local:HoldButton" Binding="{Binding IsRecording}" Value="True">
+                            <Setter Property="BackgroundColor" Value="#E53935" />
+                        </DataTrigger>
+                    </local:HoldButton.Triggers>
+                </local:HoldButton>
             </Grid>
         </Grid>
 
