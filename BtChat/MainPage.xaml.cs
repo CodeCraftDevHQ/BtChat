@@ -24,7 +24,7 @@ public partial class MainPage : ContentPage
         {
             if (e.PropertyName == nameof(MainViewModel.IsDrawerOpen)) _ = AnimateDrawerAsync();
         };
-        SizeChanged += (_, _) => FitDrawer();
+        SizeChanged += (_, _) => { FitDrawer(); FitCall(); };
         MessagesView.SizeChanged += (_, _) => FitBubbles();
         Loaded += async (_, _) =>
         {
@@ -99,5 +99,12 @@ public partial class MainPage : ContentPage
         if (!vm.IsDrawerOpen || vm.IsWide) return base.OnBackButtonPressed();
         vm.IsDrawerOpen = false;
         return true;
+    }
+
+    void FitCall()
+    {
+        var width = Math.Clamp(Width * 0.26, 84, 170);
+        LocalPreview.WidthRequest = width;
+        LocalPreview.HeightRequest = width * 4 / 3;
     }
 }

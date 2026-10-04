@@ -396,45 +396,91 @@
                 <TapGestureRecognizer Command="{Binding CloseLogCommand}" />
             </BoxView.GestureRecognizers>
         </BoxView>
-        <Grid x:Name="CallOverlay" IsVisible="{Binding ShowCall}" BackgroundColor="#F2101820" RowDefinitions="*,Auto,*">
-            <local:VideoFrameView x:Name="RemoteVideo" Grid.RowSpan="3" IsVisible="{Binding ShowVideoStage}" />
-            <Border Grid.RowSpan="3" WidthRequest="110" HeightRequest="150" HorizontalOptions="End" VerticalOptions="Start"
-                    Margin="0,36,16,0" StrokeThickness="2" Stroke="White" StrokeShape="RoundRectangle 12"
+        <Grid x:Name="CallOverlay" IsVisible="{Binding ShowCall}" RowDefinitions="*,Auto">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#0F1720" Offset="0.0" />
+                    <GradientStop Color="#1B2B3C" Offset="1.0" />
+                </LinearGradientBrush>
+            </Grid.Background>
+            <Grid.Resources>
+                <Style x:Key="CallRound" TargetType="Button">
+                    <Setter Property="FontSize" Value="22" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="WidthRequest" Value="52" />
+                    <Setter Property="HeightRequest" Value="52" />
+                    <Setter Property="CornerRadius" Value="26" />
+                    <Setter Property="BackgroundColor" Value="#33FFFFFF" />
+                    <Setter Property="TextColor" Value="White" />
+                    <Setter Property="Margin" Value="6" />
+                </Style>
+                <Style x:Key="CallMain" TargetType="Button">
+                    <Setter Property="FontSize" Value="30" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="WidthRequest" Value="72" />
+                    <Setter Property="HeightRequest" Value="72" />
+                    <Setter Property="CornerRadius" Value="36" />
+                    <Setter Property="TextColor" Value="White" />
+                </Style>
+            </Grid.Resources>
+
+            <local:VideoFrameView x:Name="RemoteVideo" Grid.RowSpan="2" IsVisible="{Binding ShowVideoStage}" />
+            <BoxView Grid.RowSpan="2" VerticalOptions="Start" HeightRequest="120" IsVisible="{Binding ShowVideoStage}">
+                <BoxView.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Color="#99000000" Offset="0.0" />
+                        <GradientStop Color="#00000000" Offset="1.0" />
+                    </LinearGradientBrush>
+                </BoxView.Background>
+            </BoxView>
+
+            <VerticalStackLayout Grid.RowSpan="2" VerticalOptions="Start" HorizontalOptions="Start" Margin="20,44,0,0"
+                                 IsVisible="{Binding ShowVideoStage}">
+                <Label TextColor="White" FontAttributes="Bold" FontSize="20" Text="{Binding CallPeerName}" />
+                <Label TextColor="#DDFFFFFF" FontSize="14" Text="{Binding CallStatusText}" />
+            </VerticalStackLayout>
+
+            <Border x:Name="LocalPreview" Grid.RowSpan="2" WidthRequest="104" HeightRequest="140" HorizontalOptions="End" VerticalOptions="Start"
+                    Margin="0,44,16,0" StrokeThickness="2" Stroke="#CCFFFFFF" StrokeShape="RoundRectangle 16"
                     IsVisible="{Binding ShowVideoStage}">
                 <local:VideoFrameView x:Name="LocalVideo" Crop="True" />
             </Border>
-            <VerticalStackLayout Grid.RowSpan="3" VerticalOptions="Start" HorizontalOptions="Start" Margin="16,40,0,0"
-                                 IsVisible="{Binding ShowVideoStage}">
-                <Label TextColor="White" FontAttributes="Bold" FontSize="18" Text="{Binding CallPeerName}" />
-                <Label TextColor="#DDDDDD" FontSize="14" Text="{Binding CallStatusText}" />
-            </VerticalStackLayout>
-            <VerticalStackLayout Grid.Row="1" Spacing="14" HorizontalOptions="Center">
-                <Border WidthRequest="120" HeightRequest="120" StrokeThickness="0" StrokeShape="RoundRectangle 60"
-                        BackgroundColor="{StaticResource AccentColor}" HorizontalOptions="Center"
-                        IsVisible="{Binding ShowAvatar}">
-                    <Label Text="{Binding CallInitial}" TextColor="White" FontAttributes="Bold" FontSize="48"
+
+            <VerticalStackLayout Grid.Row="0" Spacing="12" VerticalOptions="Center" HorizontalOptions="Center" Margin="24,0"
+                                 IsVisible="{Binding ShowAvatar}">
+                <Border WidthRequest="132" HeightRequest="132" StrokeThickness="6" Stroke="#33FFFFFF" StrokeShape="RoundRectangle 66"
+                        BackgroundColor="{StaticResource AccentColor}" HorizontalOptions="Center">
+                    <Label Text="{Binding CallInitial}" TextColor="White" FontAttributes="Bold" FontSize="54"
                            HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
-                <Label Text="{Binding CallPeerName}" TextColor="White" FontSize="24" FontAttributes="Bold"
-                       HorizontalTextAlignment="Center" IsVisible="{Binding ShowAvatar}" />
-                <Label Text="{Binding CallStatusText}" TextColor="#CCCCCC" FontSize="16" HorizontalTextAlignment="Center" IsVisible="{Binding ShowAvatar}" />
+                <Label Text="{Binding CallPeerName}" TextColor="White" FontSize="26" FontAttributes="Bold"
+                       HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" MaxLines="2" />
+                <Label Text="{Binding CallStatusText}" TextColor="#CCFFFFFF" FontSize="16" HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
-            <HorizontalStackLayout Grid.Row="2" VerticalOptions="End" HorizontalOptions="Center" Spacing="12" Margin="12,0,12,40">
-                <Button Text="{Binding CameraGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding ToggleCameraCommand}" />
-                <Button Text="⚙" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding ChooseVideoQualityCommand}" />
-                <Button Text="🔄" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding SwitchCameraCommand}" />
-                <Button Text="{Binding MuteGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        BackgroundColor="#3A4654" IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleMuteCommand}" />
-                <Button Text="{Binding SpeakerGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        BackgroundColor="#3A4654" IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleSpeakerCommand}" />
-                <Button Text="📞" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        BackgroundColor="#22C55E" IsVisible="{Binding ShowAccept}" Command="{Binding AcceptCallCommand}" />
-                <Button Text="✖" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
-                        TextColor="White" BackgroundColor="#E53935" Command="{Binding DeclineCallCommand}" />
-            </HorizontalStackLayout>
+
+            <Border Grid.Row="1" HorizontalOptions="Center" MaximumWidthRequest="460" Margin="12,0,12,20" Padding="10,12"
+                    StrokeThickness="0" StrokeShape="RoundRectangle 32" BackgroundColor="#B3141C26">
+                <VerticalStackLayout Spacing="10">
+                    <FlexLayout Wrap="Wrap" JustifyContent="Center" AlignItems="Center">
+                        <Button Style="{StaticResource CallRound}" Text="{Binding CameraGlyph}"
+                                IsVisible="{Binding ShowVideoControls}" Command="{Binding ToggleCameraCommand}" />
+                        <Button Style="{StaticResource CallRound}" Text="🔄"
+                                IsVisible="{Binding ShowVideoControls}" Command="{Binding SwitchCameraCommand}" />
+                        <Button Style="{StaticResource CallRound}" Text="⚙"
+                                IsVisible="{Binding ShowVideoControls}" Command="{Binding ChooseVideoQualityCommand}" />
+                        <Button Style="{StaticResource CallRound}" Text="{Binding MuteGlyph}"
+                                IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleMuteCommand}" />
+                        <Button Style="{StaticResource CallRound}" Text="{Binding SpeakerGlyph}"
+                                IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleSpeakerCommand}" />
+                    </FlexLayout>
+                    <HorizontalStackLayout Spacing="36" HorizontalOptions="Center">
+                        <Button Style="{StaticResource CallMain}" Text="📞" BackgroundColor="#22C55E"
+                                IsVisible="{Binding ShowAccept}" Command="{Binding AcceptCallCommand}" />
+                        <Button Style="{StaticResource CallMain}" Text="✖" BackgroundColor="#E53935"
+                                Command="{Binding DeclineCallCommand}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
         </Grid>
 
         <Border x:Name="LogCard" IsVisible="{Binding ShowLog}" HorizontalOptions="Center" VerticalOptions="Center"
