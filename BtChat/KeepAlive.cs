@@ -8,7 +8,7 @@ public interface IKeepAlive
     Task EnsurePermissionAsync();
     void Update(bool active, string text);
     // While a call runs the service also declares the microphone, so Android keeps the mic alive in the background.
-    void SetInCall(bool inCall);
+    void SetInCall(bool inCall, bool video = false);
     bool CanOpenBatterySettings { get; }
     Task OpenBatterySettingsAsync();
 }
@@ -29,7 +29,7 @@ public sealed class NoKeepAlive : IKeepAlive
     {
     }
 
-    public void SetInCall(bool inCall)
+    public void SetInCall(bool inCall, bool video = false)
     {
     }
 }

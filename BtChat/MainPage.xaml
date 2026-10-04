@@ -23,9 +23,14 @@
                             <Label Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="TailTruncation" VerticalOptions="Center" />
                         </HorizontalStackLayout>
  </VerticalStackLayout>
-                    <Button Grid.Column="3" Text="📞" FontSize="20" Padding="0" WidthRequest="40" HeightRequest="40"
-                            Style="{StaticResource QuietButton}" VerticalOptions="Center"
-                            Command="{Binding StartCallCommand}" IsEnabled="{Binding CanSend}" IsVisible="{Binding ShowCallButton}" />
+                    <HorizontalStackLayout Grid.Column="3" Spacing="0" VerticalOptions="Center">
+                        <Button Text="📹" FontSize="20" Padding="0" WidthRequest="40" HeightRequest="40"
+                                Style="{StaticResource QuietButton}" VerticalOptions="Center"
+                                Command="{Binding StartVideoCallCommand}" IsEnabled="{Binding CanSend}" IsVisible="{Binding ShowVideoCallButton}" />
+                        <Button Text="📞" FontSize="20" Padding="0" WidthRequest="40" HeightRequest="40"
+                                Style="{StaticResource QuietButton}" VerticalOptions="Center"
+                                Command="{Binding StartCallCommand}" IsEnabled="{Binding CanSend}" IsVisible="{Binding ShowCallButton}" />
+                    </HorizontalStackLayout>
                 </Grid>
             </Border>
             <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -391,26 +396,41 @@
                 <TapGestureRecognizer Command="{Binding CloseLogCommand}" />
             </BoxView.GestureRecognizers>
         </BoxView>
-        <Grid x:Name="CallOverlay" IsVisible="{Binding ShowCall}" BackgroundColor="#F2101820" Padding="24"
-              RowDefinitions="*,Auto,*">
+        <Grid x:Name="CallOverlay" IsVisible="{Binding ShowCall}" BackgroundColor="#F2101820" RowDefinitions="*,Auto,*">
+            <local:VideoFrameView x:Name="RemoteVideo" Grid.RowSpan="3" IsVisible="{Binding ShowVideoStage}" />
+            <Border Grid.RowSpan="3" WidthRequest="110" HeightRequest="150" HorizontalOptions="End" VerticalOptions="Start"
+                    Margin="0,36,16,0" StrokeThickness="2" Stroke="White" StrokeShape="RoundRectangle 12"
+                    IsVisible="{Binding ShowVideoStage}">
+                <local:VideoFrameView x:Name="LocalVideo" Crop="True" />
+            </Border>
+            <VerticalStackLayout Grid.RowSpan="3" VerticalOptions="Start" HorizontalOptions="Start" Margin="16,40,0,0"
+                                 IsVisible="{Binding ShowVideoStage}">
+                <Label TextColor="White" FontAttributes="Bold" FontSize="18" Text="{Binding CallPeerName}" />
+                <Label TextColor="#DDDDDD" FontSize="14" Text="{Binding CallStatusText}" />
+            </VerticalStackLayout>
             <VerticalStackLayout Grid.Row="1" Spacing="14" HorizontalOptions="Center">
                 <Border WidthRequest="120" HeightRequest="120" StrokeThickness="0" StrokeShape="RoundRectangle 60"
-                        BackgroundColor="{StaticResource AccentColor}" HorizontalOptions="Center">
+                        BackgroundColor="{StaticResource AccentColor}" HorizontalOptions="Center"
+                        IsVisible="{Binding ShowAvatar}">
                     <Label Text="{Binding CallInitial}" TextColor="White" FontAttributes="Bold" FontSize="48"
                            HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
                 <Label Text="{Binding CallPeerName}" TextColor="White" FontSize="24" FontAttributes="Bold"
-                       HorizontalTextAlignment="Center" />
-                <Label Text="{Binding CallStatusText}" TextColor="#CCCCCC" FontSize="16" HorizontalTextAlignment="Center" />
+                       HorizontalTextAlignment="Center" IsVisible="{Binding ShowAvatar}" />
+                <Label Text="{Binding CallStatusText}" TextColor="#CCCCCC" FontSize="16" HorizontalTextAlignment="Center" IsVisible="{Binding ShowAvatar}" />
             </VerticalStackLayout>
-            <HorizontalStackLayout Grid.Row="2" VerticalOptions="End" HorizontalOptions="Center" Spacing="22" Margin="0,0,0,40">
-                <Button Text="{Binding MuteGlyph}" FontSize="26" Padding="0" WidthRequest="64" HeightRequest="64" CornerRadius="32"
+            <HorizontalStackLayout Grid.Row="2" VerticalOptions="End" HorizontalOptions="Center" Spacing="12" Margin="12,0,12,40">
+                <Button Text="{Binding CameraGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
+                        BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding ToggleCameraCommand}" />
+                <Button Text="🔄" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
+                        BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding SwitchCameraCommand}" />
+                <Button Text="{Binding MuteGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
                         BackgroundColor="#3A4654" IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleMuteCommand}" />
-                <Button Text="{Binding SpeakerGlyph}" FontSize="26" Padding="0" WidthRequest="64" HeightRequest="64" CornerRadius="32"
+                <Button Text="{Binding SpeakerGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
                         BackgroundColor="#3A4654" IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleSpeakerCommand}" />
-                <Button Text="📞" FontSize="26" Padding="0" WidthRequest="64" HeightRequest="64" CornerRadius="32"
+                <Button Text="📞" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
                         BackgroundColor="#22C55E" IsVisible="{Binding ShowAccept}" Command="{Binding AcceptCallCommand}" />
-                <Button Text="✖" FontSize="26" Padding="0" WidthRequest="64" HeightRequest="64" CornerRadius="32"
+                <Button Text="✖" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
                         TextColor="White" BackgroundColor="#E53935" Command="{Binding DeclineCallCommand}" />
             </HorizontalStackLayout>
         </Grid>

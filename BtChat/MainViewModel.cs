@@ -360,9 +360,9 @@ public partial class MainViewModel : ObservableObject
         keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice, ICallVideo callVideoEngine)
     {
-        InitCalls(callAudioEngine, callAlertDevice);
+        InitCalls(callAudioEngine, callAlertDevice, callVideoEngine);
         this.recorder = recorder;
         InitAudio(audioPlayer);
         this.keepAlive = keepAlive;

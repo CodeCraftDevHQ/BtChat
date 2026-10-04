@@ -10,7 +10,10 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 #if ANDROID || WINDOWS
-        builder.ConfigureMauiHandlers(handlers => handlers.AddHandler<MediaPlayerView, MediaPlayerViewHandler>());
+        builder.ConfigureMauiHandlers(handlers => {
+            handlers.AddHandler<MediaPlayerView, MediaPlayerViewHandler>();
+            handlers.AddHandler<VideoFrameView, VideoFrameViewHandler>();
+        });
 #endif
 #if ANDROID
         builder.Services.AddSingleton<IPermissionGate, AndroidPermissionGate>();
@@ -28,6 +31,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IAudioPlayer, AndroidAudioPlayer>();
         builder.Services.AddSingleton<ICallAudio, AndroidCallAudio>();
         builder.Services.AddSingleton<ICallAlert, AndroidCallAlert>();
+        builder.Services.AddSingleton<ICallVideo, AndroidCallVideo>();
         builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
         builder.Services.AddSingleton<IFileSource, AndroidFileSource>();
 #else
@@ -35,6 +39,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IVoiceRecorder, NoVoiceRecorder>();
         builder.Services.AddSingleton<ICallAudio, NoCallAudio>();
         builder.Services.AddSingleton<ICallAlert, NoCallAlert>();
+        builder.Services.AddSingleton<ICallVideo, NoCallVideo>();
 #if WINDOWS
         builder.Services.AddSingleton<IAudioPlayer, WindowsAudioPlayer>();
 #else

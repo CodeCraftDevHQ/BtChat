@@ -17,6 +17,8 @@ public partial class MainViewModel
 
     ICallAudio callAudio = null!;
     ICallAlert callAlert = null!;
+    ICallVideo callVideoDevice = null!;
+    bool callFront = true;
     ChatSession? callSession;
     CancellationTokenSource? ringCts;
     IDispatcherTimer? callTimer;
@@ -27,8 +29,21 @@ public partial class MainViewModel
     [ObservableProperty] string callPeerName = "";
     [ObservableProperty] bool callMuted;
     [ObservableProperty] bool callSpeaker;
+    [ObservableProperty] bool callVideo;
+    [ObservableProperty] bool callCameraOn = true;
+
+    public event Action<VideoFrame>? RemoteVideoFrame;
+    public event Action<VideoFrame>? LocalVideoFrame;
+    public event Action? RemoteVideoCleared;
+    public event Action? LocalVideoCleared;
+    public event Action<bool>? LocalMirrorChanged;
 
     public bool ShowCallButton => callAudio.IsSupported;
+    public bool ShowVideoCallButton => callAudio.IsSupported && callVideoDevice.IsSupported;
+    public bool ShowVideoStage => CallState == CallPhase.Active && CallVideo;
+    public bool ShowAvatar => !ShowVideoStage;
+    public bool ShowVideoControls => ShowVideoStage;
+    public string CameraGlyph => CallCameraOn ? "📹" : "🚫";
     public bool ShowCall => CallState != CallPhase.Idle;
     public bool ShowAccept => CallState == CallPhase.Incoming;
     public bool ShowCallControls => CallState == CallPhase.Active;
@@ -39,24 +54,38 @@ public partial class MainViewModel
     public string CallStatusText => CallState switch
     {
         CallPhase.Outgoing => Loc.Instance["callCalling"],
-        CallPhase.Incoming => Loc.Instance["callIncoming"],
+        CallPhase.Incoming => Loc.Instance[CallVideo ? "callVideoIncoming" : "callIncoming"],
         CallPhase.Active => FormatElapsed(DateTime.UtcNow - callStarted),
         _ => ""
     };
 
     static string FormatElapsed(TimeSpan span) => $"{(int)span.TotalMinutes}:{span.Seconds:00}";
 
-    void InitCalls(ICallAudio audio, ICallAlert alert)
+    void InitCalls(ICallAudio audio, ICallAlert alert, ICallVideo video)
     {
         callAudio = audio;
         callAlert = alert;
+        callVideoDevice = video;
     }
+
+    partial void OnCallVideoChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowVideoStage));
+        OnPropertyChanged(nameof(ShowAvatar));
+        OnPropertyChanged(nameof(ShowVideoControls));
+        OnPropertyChanged(nameof(CallStatusText));
+    }
+
+    partial void OnCallCameraOnChanged(bool value) => OnPropertyChanged(nameof(CameraGlyph));
 
     partial void OnCallStateChanged(CallPhase value)
     {
         OnPropertyChanged(nameof(ShowCall));
         OnPropertyChanged(nameof(ShowAccept));
         OnPropertyChanged(nameof(ShowCallControls));
+        OnPropertyChanged(nameof(ShowVideoStage));
+        OnPropertyChanged(nameof(ShowAvatar));
+        OnPropertyChanged(nameof(ShowVideoControls));
         OnPropertyChanged(nameof(CallStatusText));
     }
 
@@ -84,25 +113,47 @@ public partial class MainViewModel
         {
             if (callActive) callAudio.Play(frame);
         };
+        current.CallVideoReceived += frame =>
+        {
+            if (!callActive || !CallVideo) return;
+            if (frame == null) RemoteVideoCleared?.Invoke();
+            else RemoteVideoFrame?.Invoke(frame);
+        };
     }
 
     string CurrentPeerLabel(ChatSession s) => linkedChat?.Name ?? s.PeerName ?? "";
 
     [RelayCommand]
-    async Task StartCallAsync()
+    Task StartCallAsync() => StartCallCoreAsync(false);
+
+    [RelayCommand]
+    Task StartVideoCallAsync() => StartCallCoreAsync(true);
+
+    async Task StartCallCoreAsync(bool video)
     {
         var s = session;
         if (s == null || !CanSend || CallState != CallPhase.Idle || !callAudio.IsSupported) return;
+        if (video)
+        {
+            if (!callVideoDevice.IsSupported) return;
+            if (!s.IsWifi)
+            {
+                await ShowAlertAsync("videoNeedsWifi");
+                return;
+            }
+        }
         if (!await permissions.EnsureAsync(PermissionKind.CallMicrophone)) return;
+        if (video && !await permissions.EnsureAsync(PermissionKind.CallCamera)) return;
         s = session;
         if (s == null || !CanSend || CallState != CallPhase.Idle) return;
         StopAudio();
         callSession = s;
         CallPeerName = CurrentPeerLabel(s);
+        CallVideo = video;
         CallState = CallPhase.Outgoing;
         try
         {
-            await s.SendCallInviteAsync(false);
+            await s.SendCallInviteAsync(video);
         }
         catch (Exception ex)
         {
@@ -158,7 +209,7 @@ public partial class MainViewModel
             _ = SendQuietly(() => s.SendCallRejectAsync(1));
             return;
         }
-        if (video || !callAudio.IsSupported)
+        if (!callAudio.IsSupported || (video && !callVideoDevice.IsSupported))
         {
             _ = SendQuietly(() => s.SendCallRejectAsync(2));
             return;
@@ -166,6 +217,7 @@ public partial class MainViewModel
         StopAudio();
         callSession = s;
         CallPeerName = CurrentPeerLabel(s);
+        CallVideo = video;
         CallState = CallPhase.Incoming;
         callAlert.StartRinging(CallPeerName);
         StartRingTimeout(s);
@@ -176,7 +228,8 @@ public partial class MainViewModel
     {
         var s = callSession;
         if (s == null || CallState != CallPhase.Incoming) return;
-        if (!await permissions.EnsureAsync(PermissionKind.CallMicrophone))
+        if (!await permissions.EnsureAsync(PermissionKind.CallMicrophone)
+            || (CallVideo && !await permissions.EnsureAsync(PermissionKind.CallCamera)))
         {
             await DeclineCallAsync();
             return;
@@ -233,6 +286,8 @@ public partial class MainViewModel
         callStarted = DateTime.UtcNow;
         CallMuted = false;
         CallSpeaker = false;
+        CallCameraOn = true;
+        callFront = true;
         if (!callAudio.Start(frame => s.TrySendCallAudio(frame)))
         {
             _ = SendQuietly(() => s.SendCallEndAsync());
@@ -241,7 +296,19 @@ public partial class MainViewModel
             return;
         }
         callActive = true;
-        keepAlive.SetInCall(true);
+        if (CallVideo)
+        {
+            if (!StartCamera(s))
+            {
+                _ = SendQuietly(() => s.SendCallEndAsync());
+                EndCallLocal();
+                _ = ShowAlertAsync("callFailed");
+                return;
+            }
+            CallSpeaker = true;
+            DeviceDisplay.Current.KeepScreenOn = true;
+        }
+        keepAlive.SetInCall(true, CallVideo);
         CallState = CallPhase.Active;
         if (callTimer == null)
         {
@@ -262,12 +329,58 @@ public partial class MainViewModel
         callTimer?.Stop();
         callActive = false;
         callAudio.Stop();
+        callVideoDevice.Stop();
         callAlert.StopRinging();
         if (CallState == CallPhase.Active) keepAlive.SetInCall(false);
+        if (CallVideo)
+        {
+            RemoteVideoCleared?.Invoke();
+            LocalVideoCleared?.Invoke();
+            try { DeviceDisplay.Current.KeepScreenOn = false; } catch { }
+        }
         callSession = null;
         CallState = CallPhase.Idle;
+        CallVideo = false;
         CallMuted = false;
         CallSpeaker = false;
+    }
+
+    bool StartCamera(ChatSession s)
+    {
+        LocalMirrorChanged?.Invoke(callFront);
+        return callVideoDevice.Start(callFront, frame =>
+        {
+            LocalVideoFrame?.Invoke(frame);
+            s.TrySendCallVideo(frame);
+        });
+    }
+
+    [RelayCommand]
+    void ToggleCamera()
+    {
+        var s = callSession;
+        if (s == null || CallState != CallPhase.Active || !CallVideo) return;
+        if (CallCameraOn)
+        {
+            CallCameraOn = false;
+            callVideoDevice.Stop();
+            _ = SendQuietly(() => s.SendCallVideoOffAsync());
+            LocalVideoCleared?.Invoke();
+        }
+        else
+        {
+            CallCameraOn = StartCamera(s);
+        }
+    }
+
+    [RelayCommand]
+    void SwitchCamera()
+    {
+        var s = callSession;
+        if (s == null || CallState != CallPhase.Active || !CallVideo || !CallCameraOn) return;
+        callFront = !callFront;
+        callVideoDevice.Stop();
+        if (!StartCamera(s)) CallCameraOn = false;
     }
 
     [RelayCommand]

@@ -10,6 +10,11 @@ public partial class MainPage : ContentPage
         InitializeComponent();
         this.vm = vm;
         BindingContext = vm;
+        vm.RemoteVideoFrame += frame => RemoteVideo.Show(frame);
+        vm.LocalVideoFrame += frame => LocalVideo.Show(frame);
+        vm.RemoteVideoCleared += () => RemoteVideo.Clear();
+        vm.LocalVideoCleared += () => LocalVideo.Clear();
+        vm.LocalMirrorChanged += mirror => LocalVideo.SetMirror(mirror);
         MediaButton.HoldDown += vm.MediaButtonDown;
         MediaButton.HoldMoved += vm.MediaButtonMoved;
         MediaButton.HoldUp += vm.MediaButtonUp;

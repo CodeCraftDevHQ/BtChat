@@ -8,7 +8,8 @@ public enum PermissionKind
     Storage,
     Microphone,
     CameraCapture,
-    CallMicrophone
+    CallMicrophone,
+    CallCamera
 }
 
 public interface IPermissionGate

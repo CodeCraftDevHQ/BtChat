@@ -25,6 +25,7 @@ public sealed class ChatSession : IDisposable
     const byte FrameCallAccept = 21; //                              the call was accepted
     const byte FrameCallReject = 22; // [reason: 0 declined, 1 busy, 2 unsupported]
     const byte FrameCallEnd = 23;    //                              hang up (also cancels a ringing call)
+    const byte FrameCallVideo = 25;  // [quarter turns][jpeg]; empty = the camera was turned off
     const byte FrameCallAudio = 24;  // [mu-law 16 kHz mono, 40 ms]
     const byte FrameTextEdit = 17;  // [message id 16][new text]     the sender changed the text of an earlier message
 
@@ -53,7 +54,11 @@ public sealed class ChatSession : IDisposable
     public event Action<byte>? CallRejected;
     public event Action? CallEnded;
     public event Action<byte[]>? CallAudioReceived;
+    public event Action<VideoFrame?>? CallVideoReceived;
     int callAudioBusy;
+    int callVideoBusy;
+
+    public bool IsWifi => name.StartsWith("tcp", StringComparison.Ordinal);
 
     public string? PeerId { get; private set; }
     public string? PeerName { get; private set; }
@@ -117,6 +122,30 @@ public sealed class ChatSession : IDisposable
             }
         });
     }
+
+    public void TrySendCallVideo(VideoFrame frame)
+    {
+        if (Interlocked.CompareExchange(ref callVideoBusy, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var payload = new byte[1 + frame.Jpeg.Length];
+                payload[0] = frame.Rotation;
+                frame.Jpeg.CopyTo(payload, 1);
+                await WriteFrameAsync(FrameCallVideo, null, payload, CancellationToken.None);
+            }
+            catch
+            {
+            }
+            finally
+            {
+                Volatile.Write(ref callVideoBusy, 0);
+            }
+        });
+    }
+
+    public Task SendCallVideoOffAsync() => WriteFrameAsync(FrameCallVideo, null, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
 
     public Task SendHelloAsync(CancellationToken ct = default)
     {
@@ -394,6 +423,9 @@ public sealed class ChatSession : IDisposable
                         break;
                     case FrameCallAudio:
                         CallAudioReceived?.Invoke(payload.ToArray());
+                        break;
+                    case FrameCallVideo:
+                        CallVideoReceived?.Invoke(length < 2 ? null : new VideoFrame(payload.Span[1..].ToArray(), payload.Span[0]));
                         break;
                     case FrameFileOffer:
                     {

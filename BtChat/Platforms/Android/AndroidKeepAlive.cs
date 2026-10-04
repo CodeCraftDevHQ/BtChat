@@ -13,6 +13,8 @@ public sealed class AndroidKeepAlive : IKeepAlive
     string? lastText;
     bool inCall;
     bool lastCall;
+    bool inVideo;
+    bool lastVideo;
 
     public event Action? ExitRequested;
 
@@ -77,11 +79,12 @@ public sealed class AndroidKeepAlive : IKeepAlive
         }
     }
 
-    public void SetInCall(bool inCall)
+    public void SetInCall(bool inCall, bool video = false)
     {
         lock (gate)
         {
             this.inCall = inCall;
+            inVideo = video;
             if (running && lastText != null) Update(true, lastText);
         }
     }
@@ -95,15 +98,17 @@ public sealed class AndroidKeepAlive : IKeepAlive
             {
                 if (active)
                 {
-                    if (running && text == lastText && inCall == lastCall) return;
+                    if (running && text == lastText && inCall == lastCall && inVideo == lastVideo) return;
                     var intent = new Intent(context, typeof(ConnectionService));
                     intent.PutExtra(ConnectionService.TextExtra, text);
                     intent.PutExtra(ConnectionService.CallExtra, inCall);
+                    intent.PutExtra(ConnectionService.VideoExtra, inCall && inVideo);
                     if (OperatingSystem.IsAndroidVersionAtLeast(26)) context.StartForegroundService(intent);
                     else context.StartService(intent);
                     running = true;
                     lastText = text;
                     lastCall = inCall;
+                    lastVideo = inVideo;
                 }
                 else if (running)
                 {
