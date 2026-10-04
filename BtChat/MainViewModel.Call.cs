@@ -356,6 +356,7 @@ public partial class MainViewModel
 
     bool StartCamera(ChatSession s)
     {
+        callVideoDevice.Quality = VideoQuality;
         LocalMirrorChanged?.Invoke(callFront);
         return callVideoDevice.Start(callFront, frame =>
         {
@@ -390,6 +391,33 @@ public partial class MainViewModel
         callFront = !callFront;
         callVideoDevice.Stop();
         if (!StartCamera(s)) CallCameraOn = false;
+    }
+
+    public int VideoQuality
+    {
+        get => Math.Clamp(Preferences.Default.Get("videoQuality", 1), 0, 3);
+        set { try { Preferences.Default.Set("videoQuality", Math.Clamp(value, 0, 3)); } catch { } }
+    }
+
+    [RelayCommand]
+    async Task ChooseVideoQuality()
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        var loc = Loc.Instance;
+        var keys = new[] { "videoQ0", "videoQ1", "videoQ2", "videoQ3" };
+        var labels = keys.Select((k, i) => (i == VideoQuality ? "✓ " : "") + loc[k]).ToArray();
+        var picked = await page.DisplayActionSheet(loc["videoQuality"], loc["cancel"], null, labels);
+        if (picked == null) return;
+        var index = Array.FindIndex(labels, l => l == picked);
+        if (index < 0 || index == VideoQuality) return;
+        VideoQuality = index;
+        var s = callSession;
+        if (s != null && CallState == CallPhase.Active && CallVideo && CallCameraOn)
+        {
+            callVideoDevice.Stop();
+            if (!StartCamera(s)) CallCameraOn = false;
+        }
     }
 
     [RelayCommand]

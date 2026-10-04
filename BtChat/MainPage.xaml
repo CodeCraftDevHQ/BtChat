@@ -422,6 +422,8 @@
             <HorizontalStackLayout Grid.Row="2" VerticalOptions="End" HorizontalOptions="Center" Spacing="12" Margin="12,0,12,40">
                 <Button Text="{Binding CameraGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
                         BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding ToggleCameraCommand}" />
+                <Button Text="⚙" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
+                        BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding ChooseVideoQualityCommand}" />
                 <Button Text="🔄" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"
                         BackgroundColor="#3A4654" IsVisible="{Binding ShowVideoControls}" Command="{Binding SwitchCameraCommand}" />
                 <Button Text="{Binding MuteGlyph}" FontSize="24" Padding="0" WidthRequest="56" HeightRequest="56" CornerRadius="28"

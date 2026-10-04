@@ -10,9 +10,20 @@ namespace BtChat;
 
 public sealed class AndroidCallVideo : ICallVideo
 {
-    const int TargetPixels = 480 * 360;
-    const int MinFrameGapMs = 80;
-    const int JpegQuality = 50;
+    static readonly (int Pixels, int GapMs, int Jpeg)[] Profiles =
+    {
+        (320 * 240, 125, 40),
+        (480 * 360, 80, 50),
+        (640 * 480, 66, 60),
+        (1280 * 720, 100, 70)
+    };
+
+    int TargetPixels => Profiles[Profile].Pixels;
+    int MinFrameGapMs => Profiles[Profile].GapMs;
+    int JpegQuality => Profiles[Profile].Jpeg;
+    int Profile => Math.Clamp(Quality, 0, Profiles.Length - 1);
+
+    public int Quality { get; set; } = 1;
 
     CameraDevice? device;
     CameraCaptureSession? session;
