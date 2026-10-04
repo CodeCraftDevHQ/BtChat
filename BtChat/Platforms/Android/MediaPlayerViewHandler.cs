@@ -28,7 +28,7 @@ public sealed class MediaPlayerViewHandler : ViewHandler<MediaPlayerView, VideoV
     {
         base.ConnectHandler(platformView);
         VirtualView.Backend = this;
-        platformView.Prepared += OnPrepared;
+        platformView.SetOnPreparedListener(new PreparedListener(this));
         platformView.Completion += OnCompletion;
         platformView.Error += OnError;
         platformView.Touch += OnTouch;
@@ -36,7 +36,7 @@ public sealed class MediaPlayerViewHandler : ViewHandler<MediaPlayerView, VideoV
 
     protected override void DisconnectHandler(VideoView platformView)
     {
-        platformView.Prepared -= OnPrepared;
+        platformView.SetOnPreparedListener(null);
         platformView.Completion -= OnCompletion;
         platformView.Error -= OnError;
         platformView.Touch -= OnTouch;
@@ -53,9 +53,14 @@ public sealed class MediaPlayerViewHandler : ViewHandler<MediaPlayerView, VideoV
         base.DisconnectHandler(platformView);
     }
 
-    void OnPrepared(object? sender, MediaPlayer.PreparedEventArgs e)
+    sealed class PreparedListener(MediaPlayerViewHandler owner) : Java.Lang.Object, MediaPlayer.IOnPreparedListener
     {
-        mediaPlayer = e.Mp;
+        public void OnPrepared(MediaPlayer? mp) => owner.OnPrepared(mp);
+    }
+
+    void OnPrepared(MediaPlayer? mp)
+    {
+        mediaPlayer = mp;
         AppLog.Write("MEDIA", $"video prepared duration={PlatformView.Duration}ms");
         VirtualView.RaisePrepared();
     }
