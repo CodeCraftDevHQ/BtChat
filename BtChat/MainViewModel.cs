@@ -58,6 +58,8 @@ public partial class MainViewModel : ObservableObject
     }
     [ObservableProperty] string myName = LocalDevice.Name;
 
+    [ObservableProperty] double bubbleMaxWidth = 420;
+
     // ---- settings page ---------------------------------------------------------------------------
 
     public string[] LanguageItems { get; } = { "فارسی", "English" };

@@ -17,6 +17,7 @@ public partial class MainPage : ContentPage
             if (e.PropertyName == nameof(MainViewModel.IsDrawerOpen)) _ = AnimateDrawerAsync();
         };
         SizeChanged += (_, _) => FitDrawer();
+        MessagesView.SizeChanged += (_, _) => FitBubbles();
         Loaded += async (_, _) =>
         {
             ScrollToEnd();
@@ -43,6 +44,14 @@ public partial class MainPage : ContentPage
         }
         MainArea.Margin = new Thickness(0);
         Drawer.TranslationX = vm.IsDrawerOpen ? 0 : ClosedOffset;
+    }
+
+    void FitBubbles()
+    {
+        var width = MessagesView.Width;
+        if (width <= 0) return;
+        var max = Math.Max(120, width * 0.8);
+        if (Math.Abs(vm.BubbleMaxWidth - max) > 0.5) vm.BubbleMaxWidth = max;
     }
 
     async Task AnimateDrawerAsync()

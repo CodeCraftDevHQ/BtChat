@@ -45,7 +45,7 @@
                     <DataTemplate>
                         <Border Margin="6,3" Padding="12,8" Stroke="Transparent" StrokeShape="RoundRectangle 16"
                                 HorizontalOptions="{Binding Align}" BackgroundColor="{Binding Bubble}"
-                                MaximumWidthRequest="420">
+                                MaximumWidthRequest="{Binding BubbleMaxWidth, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer
                                     Command="{Binding OpenFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
