@@ -5,6 +5,30 @@
              x:Class="BtChat.App">
     <Application.Resources>
         <ResourceDictionary>
+            <Color x:Key="CardLight">#F3F4F6</Color>
+            <Color x:Key="CardDark">#2A2A2E</Color>
+            <Color x:Key="AccentColor">#3B82F6</Color>
+            <Style x:Key="Card" TargetType="Border">
+                <Setter Property="Padding" Value="14" />
+                <Setter Property="Stroke" Value="Transparent" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="StrokeShape">
+                    <Setter.Value>
+                        <RoundRectangle CornerRadius="16" />
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardLight}, Dark={StaticResource CardDark}}" />
+            </Style>
+            <Style x:Key="SectionLabel" TargetType="Label">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="TextColor" Value="Gray" />
+            </Style>
+            <Style x:Key="QuietButton" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="{StaticResource AccentColor}" />
+                <Setter Property="FontAttributes" Value="Bold" />
+            </Style>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
                 <ResourceDictionary Source="Resources/Styles/Styles.xaml" />

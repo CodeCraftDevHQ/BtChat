@@ -104,19 +104,16 @@
             <BoxView WidthRequest="1" HorizontalOptions="End" Color="Gray" Opacity="0.3" />
             <Grid RowDefinitions="Auto,Auto,*" Padding="12,12,12,0" RowSpacing="8"
                   FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
-                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                    <Label Text="BtChat" FontAttributes="Bold" FontSize="20" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="{Binding [lang], Source={x:Static local:Loc.Instance}}"
-                            Command="{Binding ToggleLanguageCommand}" />
-                    <Button Grid.Column="2" Text="✕" Command="{Binding CloseDrawerCommand}" IsVisible="{Binding ShowMenuButton}" />
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="2">
+                    <Label Text="BtChat" FontAttributes="Bold" FontSize="22" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="⚙" FontSize="22" Padding="0" WidthRequest="44" HeightRequest="44"
+                            Style="{StaticResource QuietButton}" Command="{Binding OpenSettingsCommand}" />
+                    <Button Grid.Column="2" Text="✕" FontSize="18" Padding="0" WidthRequest="44" HeightRequest="44"
+                            Style="{StaticResource QuietButton}" Command="{Binding CloseDrawerCommand}" IsVisible="{Binding ShowMenuButton}" />
                 </Grid>
                 <Label Grid.Row="1" Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="WordWrap" />
                 <ScrollView Grid.Row="2">
                     <VerticalStackLayout Spacing="10" Padding="0,0,0,24">
-                        <Label Text="{Binding [myName], Source={x:Static local:Loc.Instance}}" FontSize="12" TextColor="Gray" />
-                        <Entry Text="{Binding MyName}" MaxLength="40" />
-                        <Label Text="{Binding [myNameHint], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" />
-
                         <Label Text="{Binding [chats], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" Margin="0,8,0,0" />
                         <Label Text="{Binding [noChats], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasNoChats}"
                                FontSize="12" TextColor="Gray" />
@@ -235,11 +232,6 @@
                                     </BindableLayout.ItemTemplate>
                                 </VerticalStackLayout>
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                    <Label Text="{Binding [concurrentFiles], Source={x:Static local:Loc.Instance}}"
-                                           VerticalOptions="Center" />
-                                    <Switch Grid.Column="1" IsToggled="{Binding ConcurrentFiles}" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
                                     <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
                                         <Label.FormattedText>
                                             <FormattedString>
@@ -253,12 +245,6 @@
                                             Command="{Binding RefreshAddressesCommand}" />
                                 </Grid>
                             </VerticalStackLayout>
-                        </Grid>
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
-                            <Button Text="{Binding [battery], Source={x:Static local:Loc.Instance}}"
-                                    Command="{Binding BatterySettingsCommand}" IsVisible="{Binding CanOpenBatterySettings}" />
-                            <Button Grid.Column="1" Text="{Binding [log], Source={x:Static local:Loc.Instance}}"
-                                    Command="{Binding ToggleLogCommand}" />
                         </Grid>
                     </VerticalStackLayout>
                 </ScrollView>

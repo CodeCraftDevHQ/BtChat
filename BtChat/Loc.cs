@@ -113,6 +113,19 @@ public sealed class Loc : INotifyPropertyChanged
         ["shareNoChats"] = ("هنوز گفتگویی وجود ندارد. ابتدا به یک دستگاه وصل شوید.", "No chats yet. Connect to a device first."),
         ["shareCopying"] = ("در حال آماده‌سازی فایل...", "Preparing the file..."),
         ["fileNotSent"] = ("هنوز ارسال نشده؛ پس از اتصال دکمه‌ی تلاش مجدد را بزنید", "Not sent yet - press Retry once connected"),
+        ["settings"] = ("تنظیمات", "Settings"),
+        ["setProfile"] = ("پروفایل", "Profile"),
+        ["setAppearance"] = ("ظاهر", "Appearance"),
+        ["setLanguage"] = ("زبان", "Language"),
+        ["setTheme"] = ("پوسته", "Theme"),
+        ["themeAuto"] = ("خودکار", "Auto"),
+        ["themeLight"] = ("روشن", "Light"),
+        ["themeDark"] = ("تیره", "Dark"),
+        ["setTransfer"] = ("انتقال فایل", "File transfer"),
+        ["concurrentFilesHint"] = ("در Wi-Fi چند فایل هم‌زمان فرستاده می‌شود. روی بلوتوث همیشه یکی‌یکی.", "On Wi-Fi several files are sent at once. Bluetooth always sends one by one."),
+        ["setAdvanced"] = ("پیشرفته", "Advanced"),
+        ["setAbout"] = ("درباره", "About"),
+        ["version"] = ("نسخه", "Version"),
         ["speed"] = ("سرعت پخش", "Playback speed"),
         ["subtitles"] = ("زیرنویس", "Subtitles"),
         ["subtitleChoose"] = ("انتخاب فایل زیرنویس (SRT / VTT)", "Choose subtitle file (SRT / VTT)"),
@@ -151,7 +164,22 @@ public sealed class Loc : INotifyPropertyChanged
         ["btoff"] = ("بلوتوث خاموش است یا دسترسی داده نشده", "Bluetooth is off or permission denied")
     };
 
-    public bool IsFa { get; private set; } = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "fa";
+    public bool IsFa { get; private set; } = SavedLanguageIsFa();
+
+    // The language chosen in Settings is remembered; the first start follows the phone language.
+    static bool SavedLanguageIsFa()
+    {
+        try
+        {
+            var saved = Preferences.Default.Get("lang", "");
+            if (saved == "fa") return true;
+            if (saved == "en") return false;
+        }
+        catch
+        {
+        }
+        return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "fa";
+    }
 
     public string this[string key] => table.TryGetValue(key, out var v) ? (IsFa ? v.Fa : v.En) : key;
 
@@ -162,6 +190,7 @@ public sealed class Loc : INotifyPropertyChanged
     public void Toggle()
     {
         IsFa = !IsFa;
+        try { Preferences.Default.Set("lang", IsFa ? "fa" : "en"); } catch { }
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
     }
 }

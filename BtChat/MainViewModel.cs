@@ -58,6 +58,46 @@ public partial class MainViewModel : ObservableObject
     }
     [ObservableProperty] string myName = LocalDevice.Name;
 
+    // ---- settings page ---------------------------------------------------------------------------
+
+    public string[] LanguageItems { get; } = { "فارسی", "English" };
+    public string[] ThemeItems => new[] { Loc.Instance["themeAuto"], Loc.Instance["themeLight"], Loc.Instance["themeDark"] };
+
+    [ObservableProperty] int languageIndex = Loc.Instance.IsFa ? 0 : 1;
+    [ObservableProperty] int themeIndex = Math.Clamp(Preferences.Default.Get("theme", 0), 0, 2);
+
+    partial void OnLanguageIndexChanged(int value)
+    {
+        var wantFa = value == 0;
+        if (Loc.Instance.IsFa != wantFa) ToggleLanguage();
+    }
+
+    partial void OnThemeIndexChanged(int value)
+    {
+        Preferences.Default.Set("theme", value);
+        ApplyTheme();
+    }
+
+    static void ApplyTheme()
+    {
+        var app = Application.Current;
+        if (app == null) return;
+        app.UserAppTheme = Preferences.Default.Get("theme", 0) switch
+        {
+            1 => AppTheme.Light,
+            2 => AppTheme.Dark,
+            _ => AppTheme.Unspecified
+        };
+    }
+
+    [RelayCommand]
+    async Task OpenSettingsAsync()
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        await SafeAsync("open settings", () => page.Navigation.PushModalAsync(new SettingsPage(this)));
+    }
+
     public string CurrentTitle => CurrentChat?.Name ?? "BtChat";
     public bool HasChats => Conversations.Count > 0;
     public bool HasNoChats => Conversations.Count == 0;
@@ -292,6 +332,7 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions)
     {
         this.keepAlive = keepAlive;
+        ApplyTheme();
         this.permissions = permissions;
         this.fileSource = fileSource;
         keepAlive.ExitRequested += () => MainThread.BeginInvokeOnMainThread(() =>
@@ -1385,6 +1426,8 @@ public partial class MainViewModel : ObservableObject
     void ToggleLanguage()
     {
         Loc.Instance.Toggle();
+        LanguageIndex = Loc.Instance.IsFa ? 0 : 1;
+        OnPropertyChanged(nameof(ThemeItems));
         SetStatus(statusKey);
         OnPropertyChanged(nameof(LocalAddresses));
         NotifySearch();

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:BtChat"
+             x:Class="BtChat.SettingsPage"
+             Title="{Binding [settings], Source={x:Static local:Loc.Instance}}">
+    <Grid RowDefinitions="Auto,*" Padding="16,12,16,0" RowSpacing="8"
+          FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
+        <Grid ColumnDefinitions="*,Auto">
+            <Label Text="{Binding [settings], Source={x:Static local:Loc.Instance}}"
+                   FontSize="26" FontAttributes="Bold" VerticalOptions="Center" />
+            <Button Grid.Column="1" Text="✕" Style="{StaticResource QuietButton}" FontSize="20"
+                    Clicked="OnCloseClicked" />
+        </Grid>
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="14" Padding="0,4,0,32">
+
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [setProfile], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="{Binding [myName], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                        <Entry Text="{Binding MyName}" MaxLength="40" />
+                        <Label Text="{Binding [myNameHint], Source={x:Static local:Loc.Instance}}"
+                               FontSize="12" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [setAppearance], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="14">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{Binding [setLanguage], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                            <local:Segmented Items="{Binding LanguageItems}" SelectedIndex="{Binding LanguageIndex}" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{Binding [setTheme], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                            <local:Segmented Items="{Binding ThemeItems}" SelectedIndex="{Binding ThemeIndex}" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [setTransfer], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Label Text="{Binding [concurrentFiles], Source={x:Static local:Loc.Instance}}"
+                                   FontSize="14" VerticalOptions="Center" />
+                            <Switch Grid.Column="1" IsToggled="{Binding ConcurrentFiles}" />
+                        </Grid>
+                        <Label Text="{Binding [concurrentFilesHint], Source={x:Static local:Loc.Instance}}"
+                               FontSize="12" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [setAdvanced], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Button Text="{Binding [battery], Source={x:Static local:Loc.Instance}}"
+                                Command="{Binding BatterySettingsCommand}"
+                                IsVisible="{Binding CanOpenBatterySettings}" />
+                        <Button Text="{Binding [logTitle], Source={x:Static local:Loc.Instance}}"
+                                Clicked="OnLogClicked" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label x:Name="VersionLabel" FontSize="12" TextColor="Gray" HorizontalOptions="Center" Margin="0,8,0,0" />
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>
