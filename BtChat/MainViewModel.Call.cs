@@ -298,7 +298,16 @@ public partial class MainViewModel
         callActive = true;
         if (CallVideo)
         {
-            if (!StartCamera(s))
+            var cameraStarted = false;
+            try
+            {
+                cameraStarted = StartCamera(s);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("CALL", "starting the camera failed", ex);
+            }
+            if (!cameraStarted)
             {
                 _ = SendQuietly(() => s.SendCallEndAsync());
                 EndCallLocal();
@@ -306,7 +315,7 @@ public partial class MainViewModel
                 return;
             }
             CallSpeaker = true;
-            DeviceDisplay.Current.KeepScreenOn = true;
+            try { DeviceDisplay.Current.KeepScreenOn = true; } catch (Exception ex) { AppLog.Error("CALL", "keep screen on failed", ex); }
         }
         keepAlive.SetInCall(true, CallVideo);
         CallState = CallPhase.Active;

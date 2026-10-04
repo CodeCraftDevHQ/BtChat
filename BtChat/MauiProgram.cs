@@ -7,6 +7,7 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        CrashReport.Install();
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 #if ANDROID || WINDOWS

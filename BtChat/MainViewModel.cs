@@ -461,6 +461,7 @@ public partial class MainViewModel : ObservableObject
         if (started) return;
         started = true;
         await AskFirstLanguageAsync();
+        CrashReport.ReportPrevious();
         AppLog.Write("APP", $"start {DeviceInfo.Current.Platform} {DeviceInfo.Current.VersionString} {DeviceInfo.Current.Manufacturer} {DeviceInfo.Current.Model}");
         UpdateAddresses("startup");
         _ = Task.Run(() => AcceptLoopAsync("tcp", tcp.AcceptAsync));

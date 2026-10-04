@@ -139,9 +139,19 @@ public sealed class AndroidCallVideo : ICallVideo
 
     void OnImage(ImageReader source)
     {
-        using var image = source.AcquireLatestImage();
-        if (image == null) return;
         if (!running) return;
+        Android.Media.Image? image = null;
+        try
+        {
+            image = source.AcquireLatestImage();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("CALL", "reading a camera image failed", ex);
+            return;
+        }
+        if (image == null) return;
+        using var held = image;
         var now = System.Environment.TickCount64;
         if (now - lastFrameTicks < MinFrameGapMs) return;
         lastFrameTicks = now;
@@ -216,26 +226,56 @@ public sealed class AndroidCallVideo : ICallVideo
     {
         public void OnImageAvailable(ImageReader? reader)
         {
-            if (reader != null) owner.OnImage(reader);
+            try
+            {
+                if (reader != null) owner.OnImage(reader);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("CALL", "camera image callback failed", ex);
+            }
         }
     }
 
     sealed class CameraStateCallback(AndroidCallVideo owner) : CameraDevice.StateCallback
     {
-        public override void OnOpened(CameraDevice camera) => owner.OnOpened(camera);
+        public override void OnOpened(CameraDevice camera)
+        {
+            try
+            {
+                owner.OnOpened(camera);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("CALL", "camera opened handler failed", ex);
+            }
+        }
 
-        public override void OnDisconnected(CameraDevice camera) => camera.Close();
+        public override void OnDisconnected(CameraDevice camera)
+        {
+            try { camera.Close(); } catch { }
+        }
 
         public override void OnError(CameraDevice camera, CameraError error)
         {
             AppLog.Write("CALL", $"camera error {error}");
-            camera.Close();
+            try { camera.Close(); } catch { }
         }
     }
 
     sealed class SessionStateCallback(AndroidCallVideo owner) : CameraCaptureSession.StateCallback
     {
-        public override void OnConfigured(CameraCaptureSession session) => owner.OnConfigured(session);
+        public override void OnConfigured(CameraCaptureSession session)
+        {
+            try
+            {
+                owner.OnConfigured(session);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("CALL", "camera configured handler failed", ex);
+            }
+        }
 
         public override void OnConfigureFailed(CameraCaptureSession session) => AppLog.Write("CALL", "camera configure failed");
     }

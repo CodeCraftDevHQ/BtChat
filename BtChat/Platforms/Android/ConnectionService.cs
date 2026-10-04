@@ -9,7 +9,7 @@ using AndroidX.Core.App;
 namespace BtChat;
 
 // Foreground service: while it runs Android keeps the process (and the open sockets) alive in the background.
-[Service(Exported = false, ForegroundServiceType = ForegroundService.TypeConnectedDevice | ForegroundService.TypeMicrophone | ForegroundService.TypeCamera)]
+[Service(Exported = false, ForegroundServiceType = ForegroundService.TypeConnectedDevice | ForegroundService.TypeMicrophone)]
 public class ConnectionService : Service
 {
     public const string ChannelId = "btchat_connection";
@@ -35,17 +35,36 @@ public class ConnectionService : Service
             var inCall = intent?.GetBooleanExtra(CallExtra, false) ?? false;
             var type = ForegroundService.TypeConnectedDevice;
             if (inCall && OperatingSystem.IsAndroidVersionAtLeast(30)) type |= ForegroundService.TypeMicrophone;
-            if (inCall && (intent?.GetBooleanExtra(VideoExtra, false) ?? false) && OperatingSystem.IsAndroidVersionAtLeast(30)) type |= ForegroundService.TypeCamera;
             if (OperatingSystem.IsAndroidVersionAtLeast(29))
-                StartForeground(NotificationId, notification, type);
+            {
+                try
+                {
+                    StartForeground(NotificationId, notification, type);
+                }
+                catch (Exception ex) when (type != ForegroundService.TypeConnectedDevice)
+                {
+                    AppLog.Error("KEEPALIVE", "call service type refused, using the basic type", ex);
+                    StartForeground(NotificationId, notification, ForegroundService.TypeConnectedDevice);
+                }
+            }
             else
+            {
                 StartForeground(NotificationId, notification);
+            }
             AcquireLocks();
             AppLog.Write("KEEPALIVE", $"foreground service running: {text}");
         }
         catch (Exception ex)
         {
             AppLog.Error("KEEPALIVE", "cannot start foreground", ex);
+            // startForegroundService() requires startForeground() to be called, otherwise Android kills the app.
+            try
+            {
+                StartForeground(NotificationId, BuildNotification(text));
+            }
+            catch
+            {
+            }
             StopSelf();
         }
         return StartCommandResult.NotSticky;
