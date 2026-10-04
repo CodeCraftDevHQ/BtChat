@@ -252,7 +252,7 @@ public partial class MainViewModel : ObservableObject
         {
             chat = new Conversation(id, name);
             WatchChat(chat);
-            Conversations.Insert(0, chat);
+            Conversations.Insert(linkedChat != null ? Math.Min(1, Conversations.Count) : 0, chat);
         }
         else if (chat.PeerName != name)
         {
@@ -313,6 +313,10 @@ public partial class MainViewModel : ObservableObject
         ChatMessage.Opener = files.OpenReadAsync;
         ChatMessage.VideoThumbOpener = files.GetVideoThumbnailAsync;
         this.tcp = tcp;
+        ShareInbox.Arrived += () =>
+        {
+            if (started) _ = ProcessSharedAsync();
+        };
         Conversations.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasChats));
@@ -394,6 +398,7 @@ public partial class MainViewModel : ObservableObject
         var interactive = IsBluetoothMode && firstRun;
         if (interactive) Preferences.Default.Set("btPrompted", true);
         await EnsureBluetoothAsync(interactive);
+        await ProcessSharedAsync();
     }
 
     static async Task<bool> ConfirmAsync(string titleKey, string messageKey, string acceptKey)
@@ -551,6 +556,9 @@ public partial class MainViewModel : ObservableObject
             chat = found;
             linkedChat = found;
             found.IsLinked = true;
+            // The connected device is always the first one in the list.
+            var foundIndex = Conversations.IndexOf(found);
+            if (foundIndex > 0) Conversations.Move(foundIndex, 0);
             current.ReceiveFolder = FolderFor(found);
             if (first)
             {
@@ -894,6 +902,12 @@ public partial class MainViewModel : ObservableObject
         }
         if (picked.Count == 0) return;
         AppLog.Write("UI", $"files picked: {picked.Count}");
+        await EnqueueFilesAsync(s, chat, picked);
+    }
+
+    // Puts files into the chat and the send queue, and announces each one to the other device.
+    async Task EnqueueFilesAsync(ChatSession s, Conversation chat, IReadOnlyList<PickedFile> picked)
+    {
         foreach (var file in picked)
         {
             var size = file.Size;
@@ -924,6 +938,65 @@ public partial class MainViewModel : ObservableObject
             }
         }
         PumpSends();
+    }
+
+    // ---- files shared from other apps -----------------------------------------------------------
+
+    bool sharing;
+
+    // Shows the "send to" list for files other apps shared with us, then sends them to the chosen device.
+    async Task ProcessSharedAsync()
+    {
+        if (sharing) return;
+        sharing = true;
+        try
+        {
+            while (true)
+            {
+                var items = ShareInbox.Take();
+                if (items.Count == 0) return;
+                var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+                if (page == null)
+                {
+                    ShareInbox.Return(items);
+                    return;
+                }
+                AppLog.Write("UI", $"shared files to deliver: {items.Count}");
+                // The connected device comes first (the sort is stable, so the rest stays in recent-first order).
+                var chooser = new ShareTargetPage(items, Conversations.OrderByDescending(c => c.IsLinked).ToList());
+                await page.Navigation.PushModalAsync(chooser);
+                var chat = await chooser.Result;
+                if (chat == null)
+                {
+                    AppLog.Write("UI", "share canceled");
+                    continue;
+                }
+                await SendSharedAsync(chat, items);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "handling shared files failed", ex);
+        }
+        finally
+        {
+            sharing = false;
+        }
+    }
+
+    async Task SendSharedAsync(Conversation chat, IReadOnlyList<SharedFile> items)
+    {
+        var s = session;
+        if (s == null || !IsConnected || !ReferenceEquals(chat, linkedChat))
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page != null) await page.DisplayAlert(chat.Name, Loc.Instance["shareNeedsConnection"], "OK");
+            return;
+        }
+        CurrentChat = chat;
+        if (!IsWide) IsDrawerOpen = false;
+        var picked = items.Select(i => new PickedFile(i.Name, i.Location, i.Size, () => fileSource.OpenAsync(i.Location))).ToList();
+        await EnqueueFilesAsync(s, chat, picked);
     }
 
     // Starts queued files while there is a free slot: 1 slot for Bluetooth, up to 4 for Wi-Fi "at once".
@@ -1128,8 +1201,10 @@ public partial class MainViewModel : ObservableObject
         };
         chat.Messages.Add(message);
         if (!message.IsMine && !ReferenceEquals(chat, CurrentChat)) chat.Unread++;
+        // Newest activity first, but the connected device stays on top.
+        var top = linkedChat != null && !ReferenceEquals(chat, linkedChat) ? 1 : 0;
         var index = Conversations.IndexOf(chat);
-        if (index > 0) Conversations.Move(index, 0);
+        if (index > top) Conversations.Move(index, top);
         if (!message.ShowProgress) SaveHistory();
     }
 

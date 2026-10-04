@@ -5,9 +5,43 @@ using Android.OS;
 
 namespace BtChat
 {
+    // BtChat shows up in the system share menu for any kind of file.
+    [IntentFilter(new[] { Intent.ActionSend, Intent.ActionSendMultiple }, Categories = new[] { Intent.CategoryDefault }, DataMimeType = "*/*")]
     [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTop, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
     public class MainActivity : MauiAppCompatActivity
     {
+        protected override void OnCreate(Bundle? savedInstanceState)
+        {
+            base.OnCreate(savedInstanceState);
+            // A recreated activity gets its old intent again: only a fresh start counts as a new share.
+            if (savedInstanceState == null) HandleShare(Intent);
+        }
+
+        protected override void OnNewIntent(Intent? intent)
+        {
+            base.OnNewIntent(intent);
+            if (intent == null) return;
+            Intent = intent;
+            HandleShare(intent);
+        }
+
+        static void HandleShare(Intent? intent)
+        {
+            if (intent == null) return;
+            if (intent.Action != Intent.ActionSend && intent.Action != Intent.ActionSendMultiple) return;
+            if ((intent.Flags & ActivityFlags.LaunchedFromHistory) != 0) return;
+            try
+            {
+                var items = ShareReader.Read(intent);
+                AppLog.Write("SHARE", $"share intent received: {items.Count} file(s)");
+                if (items.Count > 0) ShareInbox.Push(items);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("SHARE", "reading the share intent failed", ex);
+            }
+        }
+
         public const int PickFilesRequest = 7411;
         public const int EnableBluetoothRequest = 7412;
         public static TaskCompletionSource<Intent?>? PickResult;

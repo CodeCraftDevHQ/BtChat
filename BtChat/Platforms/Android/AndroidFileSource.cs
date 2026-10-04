@@ -72,6 +72,29 @@ public sealed class AndroidFileSource : IFileSource
         return list;
     }
 
+    // Name and size of a content:// uri (size -1 when the provider does not tell).
+    public static (string Name, long Size) Describe(ContentResolver resolver, AndroidUri uri)
+    {
+        var name = "file";
+        long size = -1;
+        try
+        {
+            using var cursor = resolver.Query(uri, new[] { "_display_name", "_size" }, null, null, null);
+            if (cursor != null && cursor.MoveToFirst())
+            {
+                var n = cursor.GetColumnIndex("_display_name");
+                if (n >= 0 && !cursor.IsNull(n)) name = cursor.GetString(n) ?? name;
+                var z = cursor.GetColumnIndex("_size");
+                if (z >= 0 && !cursor.IsNull(z)) size = cursor.GetLong(z);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("FILES", $"query failed for {uri}", ex);
+        }
+        return (name, size);
+    }
+
     // Reads through the native file descriptor when the provider gives one: no Java stream in between (faster),
     // and the file can seek, so a transfer can continue from the middle. Other providers use a normal stream.
     public Task<Stream> OpenAsync(string location)
