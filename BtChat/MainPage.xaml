@@ -57,7 +57,24 @@
                             <VerticalStackLayout Spacing="2">
                                     <Label Text="{Binding SenderName}" IsVisible="{Binding HasSender}"
                                            FontSize="11" FontAttributes="Bold" TextColor="#1B3FCF" />
-                                    <Label Text="{Binding Display}" TextColor="Black" />
+                                    <Label Text="{Binding Display}" TextColor="Black" IsVisible="{Binding ShowName}" />
+                                    <Grid IsVisible="{Binding ShowAudioPlayer}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" WidthRequest="230">
+                                        <Button Text="{Binding AudioGlyph}" FontSize="18" Padding="0"
+                                                WidthRequest="40" HeightRequest="40" CornerRadius="20"
+                                                MinimumWidthRequest="0" MinimumHeightRequest="0" VerticalOptions="Center"
+                                                Command="{Binding ToggleAudioCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                CommandParameter="{Binding .}" />
+                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="0">
+                                            <Slider Minimum="0" Maximum="1" Value="{Binding AudioProgress, Mode=OneWay}"
+                                                    DragStarted="OnAudioDragStarted" DragCompleted="OnAudioDragCompleted" />
+                                            <Label Text="{Binding AudioTime}" FontSize="11" TextColor="#444444" />
+                                        </VerticalStackLayout>
+                                        <Button Grid.Column="2" FontSize="11" Padding="0" CornerRadius="14"
+                                                WidthRequest="44" HeightRequest="28"
+                                                MinimumWidthRequest="0" MinimumHeightRequest="0" VerticalOptions="Center"
+                                                Text="{Binding AudioSpeedText, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                Command="{Binding CycleAudioSpeedCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}" />
+                                    </Grid>
                                     <Image Source="{Binding Thumb}" IsVisible="{Binding ShowImage}"
                                            WidthRequest="220" HeightRequest="160" Aspect="AspectFill" HorizontalOptions="Start" />
                                     <Grid IsVisible="{Binding ShowVideoBox}" BackgroundColor="#222222" WidthRequest="220" HeightRequest="124"

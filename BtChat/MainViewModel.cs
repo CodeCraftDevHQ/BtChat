@@ -360,9 +360,10 @@ public partial class MainViewModel : ObservableObject
         keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer)
     {
         this.recorder = recorder;
+        InitAudio(audioPlayer);
         this.keepAlive = keepAlive;
         ApplyTheme();
         this.permissions = permissions;
@@ -1398,6 +1399,7 @@ public partial class MainViewModel : ObservableObject
     async Task OpenFileAsync(ChatMessage? message)
     {
         if (message?.Location == null || message.ShowProgress || message.Failed) return;
+        if (message.ShowAudioPlayer) return;
         if (message.CanPreview)
         {
             await ShowMediaAsync(message);

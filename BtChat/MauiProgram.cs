@@ -25,11 +25,17 @@ public static class MauiProgram
         builder.UseBarcodeScanning();
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<IVoiceRecorder, AndroidVoiceRecorder>();
+        builder.Services.AddSingleton<IAudioPlayer, AndroidAudioPlayer>();
         builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
         builder.Services.AddSingleton<IFileSource, AndroidFileSource>();
 #else
         builder.Services.AddSingleton<IQrScanner, NoQrScanner>();
         builder.Services.AddSingleton<IVoiceRecorder, NoVoiceRecorder>();
+#if WINDOWS
+        builder.Services.AddSingleton<IAudioPlayer, WindowsAudioPlayer>();
+#else
+        builder.Services.AddSingleton<IAudioPlayer, NoAudioPlayer>();
+#endif
         builder.Services.AddSingleton<IKeepAlive, NoKeepAlive>();
         builder.Services.AddSingleton<IFileSource, DefaultFileSource>();
 #endif

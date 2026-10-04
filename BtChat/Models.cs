@@ -67,6 +67,81 @@ public class ChatMessage : ObservableObject
     public bool ShowImage => Ready && IsImage;
     public bool ShowVideoBox => Ready && IsVideo;
 
+    public static bool InlineAudio { get; set; }
+    public static Func<string, Task<long>>? DurationProbe { get; set; }
+    long audioPosition;
+    long audioDuration;
+    bool audioPlaying;
+    bool durationProbed;
+    public bool AudioSeeking { get; set; }
+    public bool ShowAudioPlayer => InlineAudio && Ready && IsAudio;
+    public bool IsVoice => IsFile && text.StartsWith("voice_", StringComparison.OrdinalIgnoreCase);
+    public bool ShowName => !(ShowAudioPlayer && IsVoice);
+    public string AudioGlyph => audioPlaying ? "⏸" : "▶";
+    public double AudioProgress => audioDuration > 0 ? Math.Clamp((double)audioPosition / audioDuration, 0, 1) : 0;
+
+    public long AudioPosition
+    {
+        get => audioPosition;
+        set
+        {
+            if (!SetProperty(ref audioPosition, value)) return;
+            OnPropertyChanged(nameof(AudioProgress));
+            OnPropertyChanged(nameof(AudioTime));
+        }
+    }
+
+    public long AudioDuration
+    {
+        get => audioDuration;
+        set
+        {
+            if (!SetProperty(ref audioDuration, value)) return;
+            OnPropertyChanged(nameof(AudioProgress));
+            OnPropertyChanged(nameof(AudioTime));
+        }
+    }
+
+    public bool AudioPlaying
+    {
+        get => audioPlaying;
+        set
+        {
+            if (SetProperty(ref audioPlaying, value)) OnPropertyChanged(nameof(AudioGlyph));
+        }
+    }
+
+    public string AudioTime
+    {
+        get
+        {
+            ProbeDuration();
+            if (audioDuration <= 0) return FormatClock(audioPosition);
+            return audioPlaying || audioPosition > 0
+                ? FormatClock(audioPosition) + " / " + FormatClock(audioDuration)
+                : FormatClock(audioDuration);
+        }
+    }
+
+    static string FormatClock(long ms)
+    {
+        var total = (int)(Math.Max(0, ms) / 1000);
+        return $"{total / 60}:{total % 60:00}";
+    }
+
+    void ProbeDuration()
+    {
+        if (durationProbed || audioDuration > 0 || !ShowAudioPlayer || location == null || DurationProbe == null) return;
+        durationProbed = true;
+        var target = location;
+        var probe = DurationProbe;
+        _ = Task.Run(async () =>
+        {
+            var duration = await probe(target);
+            if (duration > 0) MainThread.BeginInvokeOnMainThread(() => AudioDuration = duration);
+        });
+    }
+
     string? thumbFor;
     ImageSource? thumb;
     string? videoThumbFor;
@@ -138,6 +213,9 @@ public class ChatMessage : ObservableObject
         OnPropertyChanged(nameof(CanPreview));
         OnPropertyChanged(nameof(ShowImage));
         OnPropertyChanged(nameof(ShowVideoBox));
+        OnPropertyChanged(nameof(ShowAudioPlayer));
+        OnPropertyChanged(nameof(ShowName));
+        OnPropertyChanged(nameof(AudioTime));
         OnPropertyChanged(nameof(Thumb));
         OnPropertyChanged(nameof(VideoThumb));
         OnPropertyChanged(nameof(InfoText));

@@ -28,6 +28,18 @@ public partial class MainPage : ContentPage
         };
     }
 
+    void OnAudioDragStarted(object? sender, EventArgs e)
+    {
+        if (sender is Slider { BindingContext: ChatMessage message }) message.AudioSeeking = true;
+    }
+
+    void OnAudioDragCompleted(object? sender, EventArgs e)
+    {
+        if (sender is not Slider { BindingContext: ChatMessage message } slider) return;
+        vm.SeekAudio(message, slider.Value);
+        message.AudioSeeking = false;
+    }
+
     double ClosedOffset => -(Drawer.WidthRequest + 24);
 
     void FitDrawer()

@@ -6,13 +6,11 @@ public partial class MainViewModel
 {
     const int HoldMs = 1000;
     const double SlideCancelDp = 100;
-    const int ModeRevertMs = 5000;
     const int MaxVoiceSeconds = 600;
     const double MinVoiceSeconds = 0.5;
 
     IVoiceRecorder recorder = null!;
     CancellationTokenSource? holdCts;
-    CancellationTokenSource? revertCts;
     bool pressed;
     bool holdReached;
     string? recordingPath;
@@ -48,7 +46,6 @@ public partial class MainViewModel
         pressed = true;
         holdReached = false;
         RecordWillCancel = false;
-        revertCts?.Cancel();
         holdCts?.Cancel();
         var cts = holdCts = new CancellationTokenSource();
         _ = HoldTimerAsync(cts.Token);
@@ -80,7 +77,7 @@ public partial class MainViewModel
         holdReached = true;
         if (IsCameraMode)
         {
-            await CaptureAndSendAsync(video: true);
+            await CaptureAndSendAsync();
             return;
         }
         await StartVoiceAsync();
@@ -107,38 +104,14 @@ public partial class MainViewModel
 
     void OnMediaTap()
     {
-        if (!CanSend) return;
-        if (!IsCameraMode)
-        {
-            IsCameraMode = true;
-            ScheduleModeRevert();
-            return;
-        }
-        _ = CaptureAndSendAsync(video: false);
-    }
-
-    void ScheduleModeRevert()
-    {
-        revertCts?.Cancel();
-        var cts = revertCts = new CancellationTokenSource();
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(ModeRevertMs, cts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            MainThread.BeginInvokeOnMainThread(() => IsCameraMode = false);
-        });
+        IsCameraMode = !IsCameraMode;
     }
 
     async Task StartVoiceAsync()
     {
         if (!await permissions.EnsureAsync(PermissionKind.Microphone)) return;
         if (!pressed || !CanSend) return;
+        StopAudio();
         var path = Path.Combine(FileSystem.AppDataDirectory, "voice", $"voice_{DateTime.Now:yyyyMMdd_HHmmss}.m4a");
         if (!recorder.Start(path))
         {
@@ -182,14 +155,13 @@ public partial class MainViewModel
         await SendCapturedAsync(Path.GetFileName(path), path, new FileInfo(path).Length);
     }
 
-    async Task CaptureAndSendAsync(bool video)
+    async Task CaptureAndSendAsync()
     {
-        revertCts?.Cancel();
         try
         {
             if (!CanSend) return;
             if (!await permissions.EnsureAsync(PermissionKind.CameraCapture)) return;
-            var captured = await MediaCapture.CaptureAsync(video);
+            var captured = await MediaCapture.CaptureAsync(video: true);
             if (captured == null) return;
             await SendCapturedAsync(captured.Value.Name, captured.Value.Path, captured.Value.Size);
         }
@@ -197,10 +169,6 @@ public partial class MainViewModel
         {
             AppLog.Error("VM", "camera capture failed", ex);
             await ShowAlertAsync("captureFailed");
-        }
-        finally
-        {
-            IsCameraMode = false;
         }
     }
 
