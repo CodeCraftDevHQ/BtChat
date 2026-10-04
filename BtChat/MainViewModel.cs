@@ -940,6 +940,32 @@ public partial class MainViewModel : ObservableObject
         PumpSends();
     }
 
+    // The chosen device is not connected: the files appear in its chat as "not sent yet" with a Retry button,
+    // which works as soon as the connection is back. Each file is copied into the app first (see OutgoingStore).
+    async Task QueueOfflineAsync(Conversation chat, IReadOnlyList<SharedFile> items)
+    {
+        foreach (var item in items)
+        {
+            var message = new ChatMessage { Text = item.Name, IsMine = true, IsFile = true, SenderName = LocalDevice.Name, TransferKey = Guid.NewGuid() };
+            message.SetOffered(item.Size);
+            message.SetQueued("shareCopying");
+            AddMessage(chat, message);
+            try
+            {
+                var path = await Task.Run(() => OutgoingStore.CopyAsync(item.Name, item.Location, fileSource.OpenAsync, CancellationToken.None));
+                message.Location = path;
+                message.Fail("fileNotSent");
+                AppLog.Write("VM", $"shared file waits for a connection: {item.Name}");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("VM", $"copying shared file failed: {item.Name}", ex);
+                message.Fail();
+            }
+        }
+        SaveHistory();
+    }
+
     // ---- files shared from other apps -----------------------------------------------------------
 
     bool sharing;
@@ -987,14 +1013,13 @@ public partial class MainViewModel : ObservableObject
     async Task SendSharedAsync(Conversation chat, IReadOnlyList<SharedFile> items)
     {
         var s = session;
-        if (s == null || !IsConnected || !ReferenceEquals(chat, linkedChat))
-        {
-            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
-            if (page != null) await page.DisplayAlert(chat.Name, Loc.Instance["shareNeedsConnection"], "OK");
-            return;
-        }
         CurrentChat = chat;
         if (!IsWide) IsDrawerOpen = false;
+        if (s == null || !IsConnected || !ReferenceEquals(chat, linkedChat))
+        {
+            await QueueOfflineAsync(chat, items);
+            return;
+        }
         var picked = items.Select(i => new PickedFile(i.Name, i.Location, i.Size, () => fileSource.OpenAsync(i.Location))).ToList();
         await EnqueueFilesAsync(s, chat, picked);
     }
@@ -1255,6 +1280,7 @@ public partial class MainViewModel : ObservableObject
     void ForgetMessage(ChatMessage message)
     {
         ReleaseIfUnused(message);
+        if (message.IsMine && message.IsFile) OutgoingStore.Delete(message.Location);
         if (!message.IsReceivedFile) return;
         resumes.RemoveMessage(message);
         if (message.Failed && message.Location != null)
