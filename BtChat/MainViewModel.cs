@@ -118,6 +118,25 @@ public partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsLanMode))]
     int modeIndex = Preferences.Default.Get("mode", 0) == 1 ? 1 : 0;
 
+    public string[] ModeItems { get; } = { "Bluetooth", "Wi-Fi" };
+
+    // The "Manual connection" drawer in the Wi-Fi card is closed until the user opens it.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ManualArrow))]
+    bool manualOpen;
+
+    public string ManualArrow => ManualOpen ? "▴" : "▾";
+
+    [RelayCommand]
+    void ToggleManual() => ManualOpen = !ManualOpen;
+
+    // Show QR fills the whole row when this device cannot scan (Windows).
+    public int QrTileSpan => CanScanQr ? 1 : 2;
+
+    public string LinkedTitle => IsConnected
+        ? string.Format(Loc.Instance["connectedTo"], linkedChat?.Name ?? "")
+        : Loc.Instance["retrying"];
+
     public bool IsBluetoothMode => ModeIndex == 0;
     public bool IsLanMode => ModeIndex == 1;
     public ObservableCollection<FoundDevice> FoundDevices { get; } = new();
@@ -222,6 +241,7 @@ public partial class MainViewModel : ObservableObject
 
     void NotifyComposer()
     {
+        OnPropertyChanged(nameof(LinkedTitle));
         OnPropertyChanged(nameof(CanSend));
         OnPropertyChanged(nameof(DraftPlaceholder));
     }
@@ -326,6 +346,7 @@ public partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsLinked));
         OnPropertyChanged(nameof(IsNotLinked));
+        OnPropertyChanged(nameof(LinkedTitle));
         keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 
@@ -1429,6 +1450,7 @@ public partial class MainViewModel : ObservableObject
         LanguageIndex = Loc.Instance.IsFa ? 0 : 1;
         OnPropertyChanged(nameof(ThemeItems));
         SetStatus(statusKey);
+        OnPropertyChanged(nameof(LinkedTitle));
         OnPropertyChanged(nameof(LocalAddresses));
         NotifySearch();
         NotifyTransfers();

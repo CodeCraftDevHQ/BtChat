@@ -114,7 +114,167 @@
                 <Label Grid.Row="1" Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="WordWrap" />
                 <ScrollView Grid.Row="2">
                     <VerticalStackLayout Spacing="10" Padding="0,0,0,24">
-                        <Label Text="{Binding [chats], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" Margin="0,8,0,0" />
+                        <Border Style="{StaticResource Card}">
+                            <VerticalStackLayout Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Text="{Binding [connection], Source={x:Static local:Loc.Instance}}"
+                                           FontAttributes="Bold" FontSize="16" VerticalOptions="Center" />
+                                    <Button Grid.Column="1" Text="ⓘ" FontSize="18" Padding="0" WidthRequest="36" HeightRequest="36"
+                                            MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                            Style="{StaticResource QuietButton}"
+                                            Command="{Binding ShowHelpCommand}" CommandParameter="mode" />
+                                </Grid>
+
+                                <!-- connected (or reconnecting) -->
+                                <VerticalStackLayout Spacing="10" IsVisible="{Binding IsLinked}">
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Label Text="●" TextColor="#22C55E" VerticalOptions="Center" />
+                                        <Label Text="{Binding LinkedTitle}" FontAttributes="Bold" VerticalOptions="Center"
+                                               LineBreakMode="TailTruncation" />
+                                    </HorizontalStackLayout>
+                                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
+                                            BackgroundColor="#EF4444" TextColor="White"
+                                            Command="{Binding DisconnectCommand}" />
+                                </VerticalStackLayout>
+
+                                <!-- not connected -->
+                                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsNotLinked}">
+                                    <local:Segmented Items="{Binding ModeItems}" SelectedIndex="{Binding ModeIndex}" />
+
+                                    <!-- Bluetooth -->
+                                    <VerticalStackLayout Spacing="8" IsVisible="{Binding IsBluetoothMode}">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                            <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
+                                                    SelectedItem="{Binding SelectedDevice}"
+                                                    Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
+                                            <Button Grid.Column="1" Text="↻" FontSize="20" Padding="0" WidthRequest="44"
+                                                    Style="{StaticResource QuietButton}" Command="{Binding RefreshCommand}" />
+                                            <Button Grid.Column="2" Text="ⓘ" FontSize="18" Padding="0" WidthRequest="36"
+                                                    MinimumWidthRequest="0" Style="{StaticResource QuietButton}"
+                                                    Command="{Binding ShowHelpCommand}" CommandParameter="bluetooth" />
+                                        </Grid>
+                                        <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
+                                                Command="{Binding ConnectCommand}" />
+                                    </VerticalStackLayout>
+
+                                    <!-- Wi-Fi: easy ways first, manual IP hidden in a drawer -->
+                                    <VerticalStackLayout Spacing="10" IsVisible="{Binding IsLanMode}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Text="{Binding [easyConnect], Source={x:Static local:Loc.Instance}}"
+                                                   Style="{StaticResource SectionLabel}" VerticalOptions="Center" />
+                                            <Button Grid.Column="1" Text="ⓘ" FontSize="16" Padding="0" WidthRequest="32" HeightRequest="32"
+                                                    MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                                    Style="{StaticResource QuietButton}"
+                                                    Command="{Binding ShowHelpCommand}" CommandParameter="quick" />
+                                        </Grid>
+
+                                        <Border Style="{StaticResource Tile}" IsEnabled="{Binding IsNotSearching}">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding SearchDevicesCommand}" />
+                                            </Border.GestureRecognizers>
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Padding="4,2">
+                                                <Label Text="🔍" FontSize="26" VerticalOptions="Center" />
+                                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                                    <Label Text="{Binding [tileSearch], Source={x:Static local:Loc.Instance}}"
+                                                           FontAttributes="Bold" FontSize="14" />
+                                                    <Label Text="{Binding [tileSearchHint], Source={x:Static local:Loc.Instance}}"
+                                                           FontSize="11" TextColor="Gray" />
+                                                </VerticalStackLayout>
+                                            </Grid>
+                                        </Border>
+
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <Border Style="{StaticResource Tile}" Grid.ColumnSpan="{Binding QrTileSpan}">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding ShowQrCommand}" />
+                                                </Border.GestureRecognizers>
+                                                <VerticalStackLayout Spacing="2" Padding="0,4">
+                                                    <Label Text="▦" FontSize="26" HorizontalOptions="Center" />
+                                                    <Label Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
+                                                           FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                                                </VerticalStackLayout>
+                                            </Border>
+                                            <Border Style="{StaticResource Tile}" Grid.Column="1" IsVisible="{Binding CanScanQr}">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding ScanQrCommand}" />
+                                                </Border.GestureRecognizers>
+                                                <VerticalStackLayout Spacing="2" Padding="0,4">
+                                                    <Label Text="📷" FontSize="26" HorizontalOptions="Center" />
+                                                    <Label Text="{Binding [scanQr], Source={x:Static local:Loc.Instance}}"
+                                                           FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                                                </VerticalStackLayout>
+                                            </Border>
+                                        </Grid>
+
+                                        <Label Text="{Binding SearchText}" IsVisible="{Binding HasSearchText}" FontSize="12" TextColor="Gray" />
+                                        <Label Text="{Binding [foundHeader], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasFound}"
+                                               FontSize="12" TextColor="Gray" />
+                                        <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding FoundDevices}">
+                                            <BindableLayout.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource Tile}" Padding="12,10">
+                                                        <Border.GestureRecognizers>
+                                                            <TapGestureRecognizer
+                                                                Command="{Binding ConnectFoundCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                                CommandParameter="{Binding .}" />
+                                                        </Border.GestureRecognizers>
+                                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                                            <Label Text="📱" FontSize="20" VerticalOptions="Center" />
+                                                            <Label Grid.Column="1" Text="{Binding Display}" FontAttributes="Bold"
+                                                                   VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                                            <Label Grid.Column="2" Text="›" FontSize="22" TextColor="Gray" VerticalOptions="Center" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </BindableLayout.ItemTemplate>
+                                        </VerticalStackLayout>
+
+                                        <!-- Manual connection drawer: closed until tapped -->
+                                        <Border Style="{StaticResource Tile}" Padding="0">
+                                            <VerticalStackLayout>
+                                                <Grid ColumnDefinitions="*,Auto" Padding="14,0" HeightRequest="48">
+                                                    <Grid.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding ToggleManualCommand}" />
+                                                    </Grid.GestureRecognizers>
+                                                    <Label Text="{Binding [manualConnect], Source={x:Static local:Loc.Instance}}"
+                                                           FontAttributes="Bold" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="{Binding ManualArrow}" FontSize="18"
+                                                           TextColor="Gray" VerticalOptions="Center" />
+                                                </Grid>
+                                                <VerticalStackLayout IsVisible="{Binding ManualOpen}" Spacing="8" Padding="14,0,14,14">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <Label Text="{Binding [manualHint], Source={x:Static local:Loc.Instance}}"
+                                                               FontSize="12" TextColor="Gray" VerticalOptions="Center" />
+                                                        <Button Grid.Column="1" Text="ⓘ" FontSize="16" Padding="0" WidthRequest="32" HeightRequest="32"
+                                                                MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                                                Style="{StaticResource QuietButton}"
+                                                                Command="{Binding ShowHelpCommand}" CommandParameter="ip" />
+                                                    </Grid>
+                                                    <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
+                                                    <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
+                                                            Command="{Binding ConnectLanCommand}" />
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                        <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
+                                                            <Label.FormattedText>
+                                                                <FormattedString>
+                                                                    <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
+                                                                    <Span Text=" " />
+                                                                    <Span Text="{Binding LocalAddresses}" FontAttributes="Bold" />
+                                                                </FormattedString>
+                                                            </Label.FormattedText>
+                                                        </Label>
+                                                        <Button Grid.Column="1" Text="↻" FontSize="20" Padding="0" WidthRequest="44"
+                                                                Style="{StaticResource QuietButton}" Command="{Binding RefreshAddressesCommand}" />
+                                                    </Grid>
+                                                </VerticalStackLayout>
+                                            </VerticalStackLayout>
+                                        </Border>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Label Text="{Binding [chats], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" Margin="0,6,0,0" />
                         <Label Text="{Binding [noChats], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasNoChats}"
                                FontSize="12" TextColor="Gray" />
                         <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding Conversations}">
@@ -157,95 +317,6 @@
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
 
-                        <BoxView HeightRequest="1" Color="Gray" Opacity="0.3" Margin="0,8,0,0" />
-                        <Label Text="{Binding [connSettings], Source={x:Static local:Loc.Instance}}" FontAttributes="Bold" FontSize="16" />
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                            <Picker Title="{Binding [mode], Source={x:Static local:Loc.Instance}}"
-                                    SelectedIndex="{Binding ModeIndex}">
-                                <Picker.ItemsSource>
-                                    <x:Array Type="{x:Type x:String}">
-                                        <x:String>Bluetooth</x:String>
-                                        <x:String>Wi-Fi / IP</x:String>
-                                    </x:Array>
-                                </Picker.ItemsSource>
-                            </Picker>
-                            <Button Grid.Column="1" Text="?" FontAttributes="Bold" FontSize="14" Padding="0" WidthRequest="36" HeightRequest="36"
-                                MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
-                                Command="{Binding ShowHelpCommand}" CommandParameter="mode" />
-                        </Grid>
-                        <Grid>
-                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsBluetoothMode}">
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                                    <Picker ItemsSource="{Binding Devices}" ItemDisplayBinding="{Binding Name}"
-                                            SelectedItem="{Binding SelectedDevice}"
-                                            Title="{Binding [pick], Source={x:Static local:Loc.Instance}}" />
-                                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding RefreshCommand}" />
-                                    <Button Grid.Column="2" Text="?" FontAttributes="Bold" FontSize="14" Padding="0" WidthRequest="36" HeightRequest="36"
-                                MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
-                                Command="{Binding ShowHelpCommand}" CommandParameter="bluetooth" />
-                                </Grid>
-                                <Grid>
-                                    <Button Text="{Binding [connect], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding ConnectCommand}" IsVisible="{Binding IsNotLinked}" />
-                                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
-                                </Grid>
-                            </VerticalStackLayout>
-                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsLanMode}">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                    <Entry Text="{Binding Host}" Placeholder="{Binding [ip], Source={x:Static local:Loc.Instance}}" />
-                                    <Button Grid.Column="1" Text="?" FontAttributes="Bold" FontSize="14" Padding="0" WidthRequest="36" HeightRequest="36"
-                                MinimumWidthRequest="0" MinimumHeightRequest="0" CornerRadius="18"
-                                Command="{Binding ShowHelpCommand}" CommandParameter="ip" />
-                                </Grid>
-                                <Grid>
-                                    <Button Text="{Binding [connectIp], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding ConnectLanCommand}" IsVisible="{Binding IsNotLinked}" />
-                                    <Button Text="{Binding [disconnect], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding DisconnectCommand}" IsVisible="{Binding IsLinked}" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="6"
-                                      IsVisible="{Binding IsNotLinked}">
-                                    <Button Grid.Column="2" Grid.RowSpan="2" Text="?" FontAttributes="Bold" FontSize="14" Padding="0"
-                                            WidthRequest="36" HeightRequest="36" MinimumWidthRequest="0" MinimumHeightRequest="0"
-                                            CornerRadius="18" VerticalOptions="Center"
-                                            Command="{Binding ShowHelpCommand}" CommandParameter="quick" />
-                                    <Button Text="{Binding [search], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding SearchDevicesCommand}" IsEnabled="{Binding IsNotSearching}" />
-                                    <Button Grid.Column="1" Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding ShowQrCommand}" />
-                                    <Button Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding [scanQr], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding ScanQrCommand}" IsVisible="{Binding CanScanQr}" />
-                                </Grid>
-                                <Label Text="{Binding SearchText}" IsVisible="{Binding HasSearchText}" FontSize="12" TextColor="Gray" />
-                                <Label Text="{Binding [foundHeader], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding HasFound}"
-                                       FontSize="12" TextColor="Gray" />
-                                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding FoundDevices}"
-                                                     IsVisible="{Binding IsNotLinked}">
-                                    <BindableLayout.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Text="{Binding Display}"
-                                                    Command="{Binding ConnectFoundCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
-                                                    CommandParameter="{Binding .}" />
-                                        </DataTemplate>
-                                    </BindableLayout.ItemTemplate>
-                                </VerticalStackLayout>
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                    <Label FontSize="13" TextColor="Gray" VerticalOptions="Center">
-                                        <Label.FormattedText>
-                                            <FormattedString>
-                                                <Span Text="{Binding [myIp], Source={x:Static local:Loc.Instance}}" />
-                                                <Span Text=" " />
-                                                <Span Text="{Binding LocalAddresses}" FontAttributes="Bold" />
-                                            </FormattedString>
-                                        </Label.FormattedText>
-                                    </Label>
-                                    <Button Grid.Column="1" Text="{Binding [refresh], Source={x:Static local:Loc.Instance}}"
-                                            Command="{Binding RefreshAddressesCommand}" />
-                                </Grid>
-                            </VerticalStackLayout>
-                        </Grid>
                     </VerticalStackLayout>
                 </ScrollView>
             </Grid>

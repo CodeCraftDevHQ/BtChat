@@ -19,6 +19,17 @@
                 </Setter>
                 <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource CardLight}, Dark={StaticResource CardDark}}" />
             </Style>
+            <Style x:Key="Tile" TargetType="Border">
+                <Setter Property="Padding" Value="8" />
+                <Setter Property="Stroke" Value="Transparent" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="StrokeShape">
+                    <Setter.Value>
+                        <RoundRectangle CornerRadius="14" />
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=White, Dark=#3A3A3F}" />
+            </Style>
             <Style x:Key="SectionLabel" TargetType="Label">
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="FontAttributes" Value="Bold" />
