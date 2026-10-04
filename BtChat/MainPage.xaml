@@ -33,7 +33,8 @@
                         HorizontalOptions="End" FontSize="12" TextColor="Gray" BackgroundColor="Transparent"
                         Padding="8,0" HeightRequest="32" MinimumHeightRequest="0" />
             </Grid>
-            <CollectionView x:Name="MessagesView" Grid.Row="2" ItemsSource="{Binding Messages}">
+            <CollectionView x:Name="MessagesView" Grid.Row="2" ItemsSource="{Binding Messages}"
+                            FlowDirection="LeftToRight">
                 <CollectionView.EmptyView>
                     <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Margin="24">
                         <Label Text="💬" FontSize="54" HorizontalOptions="Center" Opacity="0.6" />
@@ -43,7 +44,9 @@
                 </CollectionView.EmptyView>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
+                      <Grid>
                         <Border Margin="6,3" Padding="12,8" Stroke="Transparent" StrokeShape="RoundRectangle 16"
+                                FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}"
                                 HorizontalOptions="{Binding Align}" BackgroundColor="{Binding Bubble}"
                                 MaximumWidthRequest="{Binding BubbleMaxWidth, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}">
                             <Border.GestureRecognizers>
@@ -95,6 +98,7 @@
                                     </HorizontalStackLayout>
                             </VerticalStackLayout>
                         </Border>
+                      </Grid>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
