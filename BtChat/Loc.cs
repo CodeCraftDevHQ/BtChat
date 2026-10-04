@@ -11,6 +11,10 @@ public sealed class Loc : INotifyPropertyChanged
     {
         ["lang"] = ("English", "فارسی"),
         ["mode"] = ("نوع اتصال", "Connection type"),
+        ["edit"] = ("ویرایش", "Edit"),
+        ["edited"] = ("ویرایش‌شده", "edited"),
+        ["editTitle"] = ("ویرایش پیام", "Edit message"),
+        ["editNeedsConnection"] = ("برای ویرایش پیام باید به همین دستگاه وصل باشید تا تغییر برای او هم اعمال شود", "Connect to this device to edit the message, so the change reaches it too"),
         ["copyText"] = ("کپی متن", "Copy text"),
         ["openFile"] = ("باز کردن فایل", "Open file"),
         ["openFolder"] = ("رفتن به پوشه", "Go to folder"),

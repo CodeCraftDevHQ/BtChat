@@ -16,6 +16,8 @@ public sealed class StoredMessage
     public double DurationSeconds { get; set; }
     public long PartialBytes { get; set; }
     public string? TransferKey { get; set; }
+    public string? MessageId { get; set; }
+    public bool IsEdited { get; set; }
 
     public static StoredMessage From(ChatMessage m) => new()
     {
@@ -30,7 +32,9 @@ public sealed class StoredMessage
         SizeBytes = m.SizeBytes,
         DurationSeconds = m.DurationSeconds,
         PartialBytes = m.ShowProgress ? m.LastDone : m.PartialBytes,
-        TransferKey = m.TransferKey == Guid.Empty ? null : m.TransferKey.ToString("N")
+        TransferKey = m.TransferKey == Guid.Empty ? null : m.TransferKey.ToString("N"),
+        MessageId = m.MessageId == Guid.Empty ? null : m.MessageId.ToString("N"),
+        IsEdited = m.IsEdited
     };
 }
 

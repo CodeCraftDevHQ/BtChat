@@ -28,6 +28,13 @@ public class ChatMessage : ObservableObject
         }
     }
     public bool IsMine { get; init; }
+    public Guid MessageId { get; set; }
+    bool isEdited;
+    public bool IsEdited
+    {
+        get => isEdited;
+        set => SetProperty(ref isEdited, value);
+    }
     public string SenderName { get; init; } = "";
     public bool HasSender => SenderName.Length > 0;
     public bool IsFile { get; init; }
@@ -364,7 +371,9 @@ public class ChatMessage : ObservableObject
             sizeBytes = s.SizeBytes,
             durationSeconds = s.DurationSeconds,
             partialBytes = s.PartialBytes,
-            TransferKey = Guid.TryParse(s.TransferKey, out var key) ? key : Guid.Empty
+            TransferKey = Guid.TryParse(s.TransferKey, out var key) ? key : Guid.Empty,
+            MessageId = Guid.TryParse(s.MessageId, out var messageId) ? messageId : Guid.Empty,
+            IsEdited = s.IsEdited
         };
         if (s.IsFile && s.FailKey != null)
         {

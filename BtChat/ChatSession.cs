@@ -20,6 +20,8 @@ public sealed class ChatSession : IDisposable
     const byte FrameFileAccept = 13; // [id][offset i64]             receiver -> sender: start sending from this byte
     const byte FrameFileRetry = 14;  // [key 16]                     receiver -> sender: please send this file again
     const byte FrameFileRetryDenied = 15; // [key 16]                sender -> receiver: that file is not available
+    const byte FrameTextId = 16;    // [message id 16][text]         a text message that can be edited later
+    const byte FrameTextEdit = 17;  // [message id 16][new text]     the sender changed the text of an earlier message
 
     // type(1) + length(4) + file id(4)
     const int FileHeaderSize = 9;
@@ -40,6 +42,7 @@ public sealed class ChatSession : IDisposable
     public event Action? PeerIdentified;
     // The other side asked to get a file again (it is identified by its transfer key).
     public event Action<Guid>? RetryRequested;
+    public event Action<Guid, string>? TextEdited;
 
     public string? PeerId { get; private set; }
     public string? PeerName { get; private set; }
@@ -55,10 +58,25 @@ public sealed class ChatSession : IDisposable
         chunkSize = name.StartsWith("tcp", StringComparison.Ordinal) ? Protocol.TcpChunkSize : Protocol.BluetoothChunkSize;
     }
 
-    public Task SendTextAsync(string text, CancellationToken ct = default)
+    public Task SendTextAsync(Guid messageId, string text, CancellationToken ct = default)
     {
         AppLog.Write("SESSION", $"{name} text tx chars={text.Length}");
-        return WriteFrameAsync(FrameText, null, Encoding.UTF8.GetBytes(text), ct);
+        return WriteFrameAsync(FrameTextId, null, WithMessageId(messageId, text), ct);
+    }
+
+    public Task SendTextEditAsync(Guid messageId, string text, CancellationToken ct = default)
+    {
+        AppLog.Write("SESSION", $"{name} text edit tx chars={text.Length}");
+        return WriteFrameAsync(FrameTextEdit, null, WithMessageId(messageId, text), ct);
+    }
+
+    static byte[] WithMessageId(Guid messageId, string text)
+    {
+        var textBytes = Encoding.UTF8.GetBytes(text);
+        var payload = new byte[16 + textBytes.Length];
+        messageId.TryWriteBytes(payload.AsSpan(0, 16));
+        textBytes.CopyTo(payload, 16);
+        return payload;
     }
 
     public Task SendHelloAsync(CancellationToken ct = default)
@@ -304,6 +322,25 @@ public sealed class ChatSession : IDisposable
                         AppLog.Write("SESSION", $"{name} text rx bytes={length}");
                         MessageReceived?.Invoke(new ChatMessage { Text = Encoding.UTF8.GetString(payload.Span), SenderName = PeerName ?? "" });
                         break;
+                    case FrameTextId:
+                    {
+                        if (payload.Length < 16) break;
+                        AppLog.Write("SESSION", $"{name} text rx bytes={length}");
+                        MessageReceived?.Invoke(new ChatMessage
+                        {
+                            MessageId = ReadKey(payload),
+                            Text = Encoding.UTF8.GetString(payload.Span[16..]),
+                            SenderName = PeerName ?? ""
+                        });
+                        break;
+                    }
+                    case FrameTextEdit:
+                    {
+                        if (payload.Length < 16) break;
+                        AppLog.Write("SESSION", $"{name} text edit rx bytes={length}");
+                        TextEdited?.Invoke(ReadKey(payload), Encoding.UTF8.GetString(payload.Span[16..]));
+                        break;
+                    }
                     case FrameFileOffer:
                     {
                         if (payload.Length < OfferFixedSize) break;

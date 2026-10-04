@@ -86,6 +86,8 @@
                                             CommandParameter="{Binding .}" />
                                     <Label Text="{Binding InfoText}" IsVisible="{Binding HasInfo}" FontSize="11" TextColor="#444444" />
                                     <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
+                                        <Label Text="{Binding [edited], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding IsEdited}"
+                                               FontSize="10" TextColor="Gray" VerticalOptions="Center" />
                                         <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" VerticalOptions="Center" />
                                         <Button Text="⋮" FontSize="20" TextColor="Gray"
                                                 BackgroundColor="Transparent" Padding="0" CornerRadius="0"

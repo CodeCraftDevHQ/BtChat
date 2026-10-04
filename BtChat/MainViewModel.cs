@@ -661,6 +661,7 @@ public partial class MainViewModel : ObservableObject
             SaveHistory();
         });
         current.RetryRequested += key => MainThread.BeginInvokeOnMainThread(() => _ = HandleRetryRequestAsync(current, key));
+        current.TextEdited += (id, text) => MainThread.BeginInvokeOnMainThread(() => ApplyReceivedEdit(id, text));
         current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() =>
             AddMessage(chat ?? GetOrCreateChat(UnknownId, Loc.Instance["unknownDevice"]), m));
         IsConnected = true;
@@ -955,8 +956,9 @@ public partial class MainViewModel : ObservableObject
         Draft = "";
         try
         {
-            await s.SendTextAsync(text);
-            AddMessage(TargetChat(), new ChatMessage { Text = text, IsMine = true, SenderName = LocalDevice.Name });
+            var messageId = Guid.NewGuid();
+            await s.SendTextAsync(messageId, text);
+            AddMessage(TargetChat(), new ChatMessage { MessageId = messageId, Text = text, IsMine = true, SenderName = LocalDevice.Name });
         }
         catch (Exception ex)
         {
@@ -1449,8 +1451,14 @@ public partial class MainViewModel : ObservableObject
                 await SafeAsync("share file", () => files.ShareAsync(message.Location!, message.Text));
             return;
         }
-        var choice = await page.DisplayActionSheet(null, loc["cancel"], null, loc["copyText"], loc["share"], loc["deleteMessage"]);
-        if (choice == loc["copyText"])
+        var textOptions = new List<string> { loc["copyText"], loc["share"] };
+        var canEdit = message.IsMine && message.MessageId != Guid.Empty;
+        if (canEdit) textOptions.Add(loc["edit"]);
+        textOptions.Add(loc["deleteMessage"]);
+        var choice = await page.DisplayActionSheet(null, loc["cancel"], null, textOptions.ToArray());
+        if (canEdit && choice == loc["edit"])
+            await EditMessageAsync(message, page);
+        else if (choice == loc["copyText"])
             await Clipboard.Default.SetTextAsync(message.Text);
         else if (choice == loc["share"])
             await Share.Default.RequestAsync(new ShareTextRequest { Text = message.Text });
@@ -1458,6 +1466,46 @@ public partial class MainViewModel : ObservableObject
         {
             ChatOf(message)?.Messages.Remove(message);
             SaveHistory();
+        }
+    }
+
+    async Task EditMessageAsync(ChatMessage message, Page page)
+    {
+        var loc = Loc.Instance;
+        var s = session;
+        var chat = ChatOf(message);
+        if (s == null || !IsConnected || chat == null || !ReferenceEquals(chat, linkedChat))
+        {
+            await page.DisplayAlert(loc["editTitle"], loc["editNeedsConnection"], loc["ok"]);
+            return;
+        }
+        var edited = await page.DisplayPromptAsync(loc["editTitle"], "", loc["ok"], loc["cancel"], null, -1, Keyboard.Text, message.Text);
+        var text = edited?.Trim();
+        if (string.IsNullOrEmpty(text) || text == message.Text) return;
+        try
+        {
+            await s.SendTextEditAsync(message.MessageId, text);
+            message.Text = text;
+            message.IsEdited = true;
+            SaveHistory();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", "edit message failed", ex);
+            SetStatus("failed");
+        }
+    }
+
+    void ApplyReceivedEdit(Guid id, string text)
+    {
+        foreach (var chat in Conversations)
+        {
+            var message = chat.Messages.FirstOrDefault(m => !m.IsMine && m.IsText && m.MessageId == id);
+            if (message == null) continue;
+            message.Text = text;
+            message.IsEdited = true;
+            SaveHistory();
+            return;
         }
     }
 
