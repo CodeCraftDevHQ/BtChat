@@ -99,6 +99,9 @@ public partial class MainViewModel : ObservableObject
     }
 
     public string CurrentTitle => CurrentChat?.Name ?? "BtChat";
+    public string CurrentInitial => CurrentChat?.Initial ?? "B";
+    // Green: connected, orange: trying to reconnect, gray: not connected.
+    public Color ConnectionDot => IsConnected ? Color.FromArgb("#22C55E") : (IsLinked ? Color.FromArgb("#F59E0B") : Colors.Gray);
     public bool HasChats => Conversations.Count > 0;
     public bool HasNoChats => Conversations.Count == 0;
     public bool CanSend => IsConnected && (linkedChat == null || ReferenceEquals(CurrentChat, linkedChat));
@@ -258,6 +261,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(Messages));
         OnPropertyChanged(nameof(HasMessages));
         OnPropertyChanged(nameof(CurrentTitle));
+        OnPropertyChanged(nameof(CurrentInitial));
         NotifyComposer();
         ScrollRequested?.Invoke();
     }
@@ -301,7 +305,10 @@ public partial class MainViewModel : ObservableObject
         chat.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Conversation.Name) && ReferenceEquals(chat, CurrentChat))
+            {
                 OnPropertyChanged(nameof(CurrentTitle));
+                OnPropertyChanged(nameof(CurrentInitial));
+            }
         };
     }
 
@@ -347,6 +354,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsLinked));
         OnPropertyChanged(nameof(IsNotLinked));
         OnPropertyChanged(nameof(LinkedTitle));
+        OnPropertyChanged(nameof(ConnectionDot));
         keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 

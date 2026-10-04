@@ -6,14 +6,25 @@
     <Grid FlowDirection="LeftToRight">
         <Grid x:Name="MainArea" RowDefinitions="Auto,Auto,*,Auto" Padding="8" RowSpacing="6"
               FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                <Button Text="☰" FontSize="20" Padding="0" WidthRequest="48" HeightRequest="44"
-                        Command="{Binding ToggleDrawerCommand}" IsVisible="{Binding ShowMenuButton}" />
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                    <Label Text="{Binding CurrentTitle}" FontAttributes="Bold" FontSize="18" LineBreakMode="TailTruncation" />
-                    <Label Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="TailTruncation" />
-                </VerticalStackLayout>
-            </Grid>
+            <Border Grid.Row="0" Style="{StaticResource Card}" Padding="8,6">
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="10">
+                    <Button Text="☰" FontSize="22" Padding="0" WidthRequest="40" HeightRequest="40"
+                            Style="{StaticResource QuietButton}"
+                            Command="{Binding ToggleDrawerCommand}" IsVisible="{Binding ShowMenuButton}" />
+                    <Border Grid.Column="1" WidthRequest="42" HeightRequest="42" StrokeThickness="0"
+                            StrokeShape="RoundRectangle 21" BackgroundColor="{StaticResource AccentColor}">
+                        <Label Text="{Binding CurrentInitial}" TextColor="White" FontAttributes="Bold" FontSize="18"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="1">
+                        <Label Text="{Binding CurrentTitle}" FontAttributes="Bold" FontSize="17" LineBreakMode="TailTruncation" />
+                        <HorizontalStackLayout Spacing="5">
+                            <Label Text="●" FontSize="10" TextColor="{Binding ConnectionDot}" VerticalOptions="Center" />
+                            <Label Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
             <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
                 <Label Text="{Binding TransferText}" IsVisible="{Binding HasTransfers}"
                        FontSize="12" TextColor="Gray" VerticalOptions="Center" />
@@ -24,12 +35,15 @@
             </Grid>
             <CollectionView x:Name="MessagesView" Grid.Row="2" ItemsSource="{Binding Messages}">
                 <CollectionView.EmptyView>
-                    <Label Text="{Binding [noChatSelected], Source={x:Static local:Loc.Instance}}"
-                           TextColor="Gray" HorizontalTextAlignment="Center" VerticalOptions="Center" Margin="24" />
+                    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Margin="24">
+                        <Label Text="💬" FontSize="54" HorizontalOptions="Center" Opacity="0.6" />
+                        <Label Text="{Binding [noChatSelected], Source={x:Static local:Loc.Instance}}"
+                               TextColor="Gray" HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
                 </CollectionView.EmptyView>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <Border Margin="4" Padding="10,6" Stroke="Transparent" StrokeShape="RoundRectangle 12"
+                        <Border Margin="6,3" Padding="12,8" Stroke="Transparent" StrokeShape="RoundRectangle 16"
                                 HorizontalOptions="{Binding Align}" BackgroundColor="{Binding Bubble}"
                                 MaximumWidthRequest="420">
                             <Border.GestureRecognizers>
@@ -84,11 +98,18 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-            <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                <Button Text="📎" Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />
-                <Entry Grid.Column="1" Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
-                       Placeholder="{Binding DraftPlaceholder}" />
-                <Button Grid.Column="2" Text="{Binding [send], Source={x:Static local:Loc.Instance}}"
+            <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,2,0,0">
+                <Button Text="📎" FontSize="22" Padding="0" WidthRequest="44" HeightRequest="44"
+                        Style="{StaticResource QuietButton}"
+                        Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />
+                <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14,0"
+                        StrokeShape="RoundRectangle 22">
+                    <Entry Text="{Binding Draft}" ReturnCommand="{Binding SendCommand}"
+                           Placeholder="{Binding DraftPlaceholder}" BackgroundColor="Transparent"
+                           HeightRequest="44" />
+                </Border>
+                <Button Grid.Column="2" Text="↑" FontSize="22" FontAttributes="Bold" Padding="0"
+                        WidthRequest="44" HeightRequest="44" CornerRadius="22"
                         Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
             </Grid>
         </Grid>
