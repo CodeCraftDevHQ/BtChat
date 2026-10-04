@@ -42,6 +42,20 @@ namespace BtChat
             }
         }
 
+        public static volatile bool InForeground;
+
+        protected override void OnResume()
+        {
+            base.OnResume();
+            InForeground = true;
+        }
+
+        protected override void OnPause()
+        {
+            InForeground = false;
+            base.OnPause();
+        }
+
         public const int PickFilesRequest = 7411;
         public const int EnableBluetoothRequest = 7412;
         public static TaskCompletionSource<Intent?>? PickResult;

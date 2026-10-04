@@ -360,8 +360,9 @@ public partial class MainViewModel : ObservableObject
         keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice)
     {
+        InitCalls(callAudioEngine, callAlertDevice);
         this.recorder = recorder;
         InitAudio(audioPlayer);
         this.keepAlive = keepAlive;
@@ -663,6 +664,7 @@ public partial class MainViewModel : ObservableObject
             SaveHistory();
         });
         current.RetryRequested += key => MainThread.BeginInvokeOnMainThread(() => _ = HandleRetryRequestAsync(current, key));
+        HookCall(current);
         current.TextEdited += (id, text) => MainThread.BeginInvokeOnMainThread(() => ApplyReceivedEdit(id, text));
         current.MessageReceived += m => MainThread.BeginInvokeOnMainThread(() =>
             AddMessage(chat ?? GetOrCreateChat(UnknownId, Loc.Instance["unknownDevice"]), m));
@@ -696,6 +698,7 @@ public partial class MainViewModel : ObservableObject
             IsConnected = false;
             MainThread.BeginInvokeOnMainThread(() =>
             {
+                if (ReferenceEquals(callSession, current)) EndCallLocal();
                 if (chat != null)
                 {
                     chat.IsLinked = false;

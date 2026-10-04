@@ -9,11 +9,12 @@ using AndroidX.Core.App;
 namespace BtChat;
 
 // Foreground service: while it runs Android keeps the process (and the open sockets) alive in the background.
-[Service(Exported = false, ForegroundServiceType = ForegroundService.TypeConnectedDevice)]
+[Service(Exported = false, ForegroundServiceType = ForegroundService.TypeConnectedDevice | ForegroundService.TypeMicrophone)]
 public class ConnectionService : Service
 {
     public const string ChannelId = "btchat_connection";
     public const string TextExtra = "text";
+    public const string CallExtra = "call";
     const int NotificationId = 4711;
 
     public static event Action? TaskRemoved;
@@ -30,8 +31,11 @@ public class ConnectionService : Service
         {
             EnsureChannel();
             var notification = BuildNotification(text);
+            var inCall = intent?.GetBooleanExtra(CallExtra, false) ?? false;
+            var type = ForegroundService.TypeConnectedDevice;
+            if (inCall && OperatingSystem.IsAndroidVersionAtLeast(30)) type |= ForegroundService.TypeMicrophone;
             if (OperatingSystem.IsAndroidVersionAtLeast(29))
-                StartForeground(NotificationId, notification, ForegroundService.TypeConnectedDevice);
+                StartForeground(NotificationId, notification, type);
             else
                 StartForeground(NotificationId, notification);
             AcquireLocks();

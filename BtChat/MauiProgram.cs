@@ -26,11 +26,15 @@ public static class MauiProgram
         builder.Services.AddSingleton<IQrScanner, AndroidQrScanner>();
         builder.Services.AddSingleton<IVoiceRecorder, AndroidVoiceRecorder>();
         builder.Services.AddSingleton<IAudioPlayer, AndroidAudioPlayer>();
+        builder.Services.AddSingleton<ICallAudio, AndroidCallAudio>();
+        builder.Services.AddSingleton<ICallAlert, AndroidCallAlert>();
         builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
         builder.Services.AddSingleton<IFileSource, AndroidFileSource>();
 #else
         builder.Services.AddSingleton<IQrScanner, NoQrScanner>();
         builder.Services.AddSingleton<IVoiceRecorder, NoVoiceRecorder>();
+        builder.Services.AddSingleton<ICallAudio, NoCallAudio>();
+        builder.Services.AddSingleton<ICallAlert, NoCallAlert>();
 #if WINDOWS
         builder.Services.AddSingleton<IAudioPlayer, WindowsAudioPlayer>();
 #else

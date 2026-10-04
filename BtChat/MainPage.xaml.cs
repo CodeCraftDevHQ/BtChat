@@ -85,6 +85,7 @@ public partial class MainPage : ContentPage
 
     protected override bool OnBackButtonPressed()
     {
+        if (vm.ShowCall) return true;
         if (vm.ShowLog)
         {
             vm.ShowLog = false;

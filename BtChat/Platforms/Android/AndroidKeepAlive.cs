@@ -11,6 +11,8 @@ public sealed class AndroidKeepAlive : IKeepAlive
     readonly object gate = new();
     bool running;
     string? lastText;
+    bool inCall;
+    bool lastCall;
 
     public event Action? ExitRequested;
 
@@ -75,6 +77,15 @@ public sealed class AndroidKeepAlive : IKeepAlive
         }
     }
 
+    public void SetInCall(bool inCall)
+    {
+        lock (gate)
+        {
+            this.inCall = inCall;
+            if (running && lastText != null) Update(true, lastText);
+        }
+    }
+
     public void Update(bool active, string text)
     {
         lock (gate)
@@ -84,13 +95,15 @@ public sealed class AndroidKeepAlive : IKeepAlive
             {
                 if (active)
                 {
-                    if (running && text == lastText) return;
+                    if (running && text == lastText && inCall == lastCall) return;
                     var intent = new Intent(context, typeof(ConnectionService));
                     intent.PutExtra(ConnectionService.TextExtra, text);
+                    intent.PutExtra(ConnectionService.CallExtra, inCall);
                     if (OperatingSystem.IsAndroidVersionAtLeast(26)) context.StartForegroundService(intent);
                     else context.StartService(intent);
                     running = true;
                     lastText = text;
+                    lastCall = inCall;
                 }
                 else if (running)
                 {

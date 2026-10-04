@@ -21,6 +21,11 @@ public sealed class ChatSession : IDisposable
     const byte FrameFileRetry = 14;  // [key 16]                     receiver -> sender: please send this file again
     const byte FrameFileRetryDenied = 15; // [key 16]                sender -> receiver: that file is not available
     const byte FrameTextId = 16;    // [message id 16][text]         a text message that can be edited later
+    const byte FrameCallInvite = 20; // [video 0/1]                   the other side wants to call
+    const byte FrameCallAccept = 21; //                              the call was accepted
+    const byte FrameCallReject = 22; // [reason: 0 declined, 1 busy, 2 unsupported]
+    const byte FrameCallEnd = 23;    //                              hang up (also cancels a ringing call)
+    const byte FrameCallAudio = 24;  // [mu-law 16 kHz mono, 40 ms]
     const byte FrameTextEdit = 17;  // [message id 16][new text]     the sender changed the text of an earlier message
 
     // type(1) + length(4) + file id(4)
@@ -43,6 +48,12 @@ public sealed class ChatSession : IDisposable
     // The other side asked to get a file again (it is identified by its transfer key).
     public event Action<Guid>? RetryRequested;
     public event Action<Guid, string>? TextEdited;
+    public event Action<bool>? CallInvited;
+    public event Action? CallAccepted;
+    public event Action<byte>? CallRejected;
+    public event Action? CallEnded;
+    public event Action<byte[]>? CallAudioReceived;
+    int callAudioBusy;
 
     public string? PeerId { get; private set; }
     public string? PeerName { get; private set; }
@@ -77,6 +88,34 @@ public sealed class ChatSession : IDisposable
         messageId.TryWriteBytes(payload.AsSpan(0, 16));
         textBytes.CopyTo(payload, 16);
         return payload;
+    }
+
+    public Task SendCallInviteAsync(bool video) => WriteFrameAsync(FrameCallInvite, null, new[] { (byte)(video ? 1 : 0) }, CancellationToken.None);
+
+    public Task SendCallAcceptAsync() => WriteFrameAsync(FrameCallAccept, null, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
+
+    public Task SendCallRejectAsync(byte reason) => WriteFrameAsync(FrameCallReject, null, new[] { reason }, CancellationToken.None);
+
+    public Task SendCallEndAsync() => WriteFrameAsync(FrameCallEnd, null, ReadOnlyMemory<byte>.Empty, CancellationToken.None);
+
+    // Audio frames are dropped when the connection is still busy with the previous one, so a call never lags behind.
+    public void TrySendCallAudio(byte[] frame)
+    {
+        if (Interlocked.CompareExchange(ref callAudioBusy, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await WriteFrameAsync(FrameCallAudio, null, frame, CancellationToken.None);
+            }
+            catch
+            {
+            }
+            finally
+            {
+                Volatile.Write(ref callAudioBusy, 0);
+            }
+        });
     }
 
     public Task SendHelloAsync(CancellationToken ct = default)
@@ -341,6 +380,21 @@ public sealed class ChatSession : IDisposable
                         TextEdited?.Invoke(ReadKey(payload), Encoding.UTF8.GetString(payload.Span[16..]));
                         break;
                     }
+                    case FrameCallInvite:
+                        CallInvited?.Invoke(length > 0 && payload.Span[0] == 1);
+                        break;
+                    case FrameCallAccept:
+                        CallAccepted?.Invoke();
+                        break;
+                    case FrameCallReject:
+                        CallRejected?.Invoke(length > 0 ? payload.Span[0] : (byte)0);
+                        break;
+                    case FrameCallEnd:
+                        CallEnded?.Invoke();
+                        break;
+                    case FrameCallAudio:
+                        CallAudioReceived?.Invoke(payload.ToArray());
+                        break;
                     case FrameFileOffer:
                     {
                         if (payload.Length < OfferFixedSize) break;
