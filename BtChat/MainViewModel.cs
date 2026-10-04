@@ -1217,7 +1217,7 @@ public partial class MainViewModel : ObservableObject
         IReadOnlyList<ChatMessage>? gallery = null;
         if (message.IsImage)
             gallery = ChatOf(message)?.Messages.Where(m => m.CanPreview && m.IsImage).ToList();
-        await SafeAsync("show media", () => page.Navigation.PushModalAsync(new MediaViewerPage(message, files, gallery)));
+        await SafeAsync("show media", () => page.Navigation.PushModalAsync(new MediaViewerPage(message, files, gallery, fileSource, ChatOf(message)?.Messages.ToList())));
     }
 
     [RelayCommand]
