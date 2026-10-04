@@ -15,6 +15,10 @@ public partial class MainPage : ContentPage
         vm.RemoteVideoCleared += () => RemoteVideo.Clear();
         vm.LocalVideoCleared += () => LocalVideo.Clear();
         vm.LocalMirrorChanged += mirror => LocalVideo.SetMirror(mirror);
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.CallMenuOpen)) MainThread.BeginInvokeOnMainThread(AnimateCallMenu);
+        };
         MediaButton.HoldDown += vm.MediaButtonDown;
         MediaButton.HoldMoved += vm.MediaButtonMoved;
         MediaButton.HoldUp += vm.MediaButtonUp;
@@ -106,5 +110,29 @@ public partial class MainPage : ContentPage
         var width = Math.Clamp(Width * 0.26, 84, 170);
         LocalPreview.WidthRequest = width;
         LocalPreview.HeightRequest = width * 4 / 3;
+    }
+
+    async void AnimateCallMenu()
+    {
+        try
+        {
+            CallMenu.CancelAnimations();
+            if (vm.CallMenuOpen)
+            {
+                CallMenu.Opacity = 0;
+                CallMenu.TranslationY = 40;
+                CallMenu.IsVisible = true;
+                await Task.WhenAll(CallMenu.FadeTo(1, 180), CallMenu.TranslateTo(0, 0, 180, Easing.CubicOut));
+            }
+            else if (CallMenu.IsVisible)
+            {
+                await Task.WhenAll(CallMenu.FadeTo(0, 140), CallMenu.TranslateTo(0, 40, 140, Easing.CubicIn));
+                if (!vm.CallMenuOpen) CallMenu.IsVisible = false;
+            }
+        }
+        catch
+        {
+            CallMenu.IsVisible = vm.CallMenuOpen;
+        }
     }
 }

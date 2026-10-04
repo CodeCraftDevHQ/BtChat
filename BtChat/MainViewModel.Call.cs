@@ -30,6 +30,14 @@ public partial class MainViewModel
     [ObservableProperty] bool callMuted;
     [ObservableProperty] bool callSpeaker;
     [ObservableProperty] bool callVideo;
+    [ObservableProperty] bool callMenuOpen;
+
+    public string MenuGlyph => CallMenuOpen ? "⌄" : "⌃";
+
+    partial void OnCallMenuOpenChanged(bool value) => OnPropertyChanged(nameof(MenuGlyph));
+
+    [RelayCommand]
+    void ToggleCallMenu() => CallMenuOpen = !CallMenuOpen;
     [ObservableProperty] bool callCameraOn = true;
 
     public event Action<VideoFrame>? RemoteVideoFrame;
@@ -80,6 +88,7 @@ public partial class MainViewModel
 
     partial void OnCallStateChanged(CallPhase value)
     {
+        if (value != CallPhase.Active) CallMenuOpen = false;
         OnPropertyChanged(nameof(ShowCall));
         OnPropertyChanged(nameof(ShowAccept));
         OnPropertyChanged(nameof(ShowCallControls));
@@ -368,6 +377,7 @@ public partial class MainViewModel
     [RelayCommand]
     void ToggleCamera()
     {
+        CallMenuOpen = false;
         var s = callSession;
         if (s == null || CallState != CallPhase.Active || !CallVideo) return;
         if (CallCameraOn)
@@ -386,6 +396,7 @@ public partial class MainViewModel
     [RelayCommand]
     void SwitchCamera()
     {
+        CallMenuOpen = false;
         var s = callSession;
         if (s == null || CallState != CallPhase.Active || !CallVideo || !CallCameraOn) return;
         callFront = !callFront;
@@ -402,6 +413,7 @@ public partial class MainViewModel
     [RelayCommand]
     async Task ChooseVideoQuality()
     {
+        CallMenuOpen = false;
         var page = Application.Current?.Windows.FirstOrDefault()?.Page;
         if (page == null) return;
         var loc = Loc.Instance;
@@ -424,5 +436,9 @@ public partial class MainViewModel
     void ToggleMute() => CallMuted = !CallMuted;
 
     [RelayCommand]
-    void ToggleSpeaker() => CallSpeaker = !CallSpeaker;
+    void ToggleSpeaker()
+    {
+        CallMenuOpen = false;
+        CallSpeaker = !CallSpeaker;
+    }
 }

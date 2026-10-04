@@ -458,29 +458,52 @@
                 <Label Text="{Binding CallStatusText}" TextColor="#CCFFFFFF" FontSize="16" HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
 
-            <Border Grid.Row="1" HorizontalOptions="Center" MaximumWidthRequest="460" Margin="12,0,12,20" Padding="10,12"
-                    StrokeThickness="0" StrokeShape="RoundRectangle 32" BackgroundColor="#B3141C26">
-                <VerticalStackLayout Spacing="10">
-                    <FlexLayout Wrap="Wrap" JustifyContent="Center" AlignItems="Center">
-                        <Button Style="{StaticResource CallRound}" Text="{Binding CameraGlyph}"
-                                IsVisible="{Binding ShowVideoControls}" Command="{Binding ToggleCameraCommand}" />
-                        <Button Style="{StaticResource CallRound}" Text="🔄"
-                                IsVisible="{Binding ShowVideoControls}" Command="{Binding SwitchCameraCommand}" />
-                        <Button Style="{StaticResource CallRound}" Text="⚙"
-                                IsVisible="{Binding ShowVideoControls}" Command="{Binding ChooseVideoQualityCommand}" />
-                        <Button Style="{StaticResource CallRound}" Text="{Binding MuteGlyph}"
-                                IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleMuteCommand}" />
-                        <Button Style="{StaticResource CallRound}" Text="{Binding SpeakerGlyph}"
-                                IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleSpeakerCommand}" />
+            <VerticalStackLayout Grid.Row="1" HorizontalOptions="Center" MaximumWidthRequest="460" Margin="12,0,12,20" Spacing="10">
+                <Border x:Name="CallMenu" IsVisible="False" Padding="8,14" StrokeThickness="0"
+                        StrokeShape="RoundRectangle 28" BackgroundColor="#E61A2330">
+                    <FlexLayout Wrap="Wrap" JustifyContent="Center" AlignItems="Start">
+                        <VerticalStackLayout Margin="8" Spacing="6" WidthRequest="76" IsVisible="{Binding ShowVideoControls}">
+                            <Button Style="{StaticResource CallRound}" Text="{Binding CameraGlyph}" Margin="0" HorizontalOptions="Center"
+                                    Command="{Binding ToggleCameraCommand}" />
+                            <Label Text="{Binding [callMenuCamera], Source={x:Static local:Loc.Instance}}" TextColor="#DDFFFFFF" FontSize="12" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Margin="8" Spacing="6" WidthRequest="76" IsVisible="{Binding ShowVideoControls}">
+                            <Button Style="{StaticResource CallRound}" Text="🔄" Margin="0" HorizontalOptions="Center"
+                                    Command="{Binding SwitchCameraCommand}" />
+                            <Label Text="{Binding [callMenuFlip], Source={x:Static local:Loc.Instance}}" TextColor="#DDFFFFFF" FontSize="12" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Margin="8" Spacing="6" WidthRequest="76" IsVisible="{Binding ShowVideoControls}">
+                            <Button Style="{StaticResource CallRound}" Text="⚙" Margin="0" HorizontalOptions="Center"
+                                    Command="{Binding ChooseVideoQualityCommand}" />
+                            <Label Text="{Binding [callMenuQuality], Source={x:Static local:Loc.Instance}}" TextColor="#DDFFFFFF" FontSize="12" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Margin="8" Spacing="6" WidthRequest="76">
+                            <Button Style="{StaticResource CallRound}" Text="{Binding SpeakerGlyph}" Margin="0" HorizontalOptions="Center"
+                                    Command="{Binding ToggleSpeakerCommand}" />
+                            <Label Text="{Binding [callMenuSpeaker], Source={x:Static local:Loc.Instance}}" TextColor="#DDFFFFFF" FontSize="12" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
                     </FlexLayout>
-                    <HorizontalStackLayout Spacing="36" HorizontalOptions="Center">
+                </Border>
+
+                <Border HorizontalOptions="Center" WidthRequest="64" HeightRequest="28" StrokeThickness="0"
+                        StrokeShape="RoundRectangle 14" BackgroundColor="#80141C26" IsVisible="{Binding ShowCallControls}">
+                    <Label Text="{Binding MenuGlyph}" TextColor="White" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ToggleCallMenuCommand}" />
+                    </Border.GestureRecognizers>
+                </Border>
+
+                <Border HorizontalOptions="Center" Padding="18,12" StrokeThickness="0" StrokeShape="RoundRectangle 40" BackgroundColor="#B3141C26">
+                    <HorizontalStackLayout Spacing="28" HorizontalOptions="Center">
+                        <Button Style="{StaticResource CallMain}" Text="{Binding MuteGlyph}" BackgroundColor="#33FFFFFF"
+                                IsVisible="{Binding ShowCallControls}" Command="{Binding ToggleMuteCommand}" />
                         <Button Style="{StaticResource CallMain}" Text="📞" BackgroundColor="#22C55E"
                                 IsVisible="{Binding ShowAccept}" Command="{Binding AcceptCallCommand}" />
                         <Button Style="{StaticResource CallMain}" Text="✖" BackgroundColor="#E53935"
                                 Command="{Binding DeclineCallCommand}" />
                     </HorizontalStackLayout>
-                </VerticalStackLayout>
-            </Border>
+                </Border>
+            </VerticalStackLayout>
         </Grid>
 
         <Border x:Name="LogCard" IsVisible="{Binding ShowLog}" HorizontalOptions="Center" VerticalOptions="Center"
