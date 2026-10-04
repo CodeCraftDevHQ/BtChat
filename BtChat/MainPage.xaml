@@ -51,8 +51,7 @@
                                     Command="{Binding OpenFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                     CommandParameter="{Binding .}" />
                             </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                                <VerticalStackLayout Spacing="2">
+                            <VerticalStackLayout Spacing="2">
                                     <Label Text="{Binding SenderName}" IsVisible="{Binding HasSender}"
                                            FontSize="11" FontAttributes="Bold" TextColor="#1B3FCF" />
                                     <Label Text="{Binding Display}" TextColor="Black" />
@@ -83,17 +82,18 @@
                                             Command="{Binding RetryFileCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
                                             CommandParameter="{Binding .}" />
                                     <Label Text="{Binding InfoText}" IsVisible="{Binding HasInfo}" FontSize="11" TextColor="#444444" />
-                                    <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" HorizontalOptions="End" />
-                                </VerticalStackLayout>
-                                <Button Grid.Column="1" Text="⋮" FontSize="20" TextColor="Gray"
-                                        BackgroundColor="Transparent" Padding="0" CornerRadius="0"
-                                        WidthRequest="32" HeightRequest="32"
-                                        MinimumWidthRequest="0" MinimumHeightRequest="0"
-                                        VerticalOptions="Start"
-                                        IsVisible="{Binding HasMenu}"
-                                        Command="{Binding MessageMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
-                                        CommandParameter="{Binding .}" />
-                            </Grid>
+                                    <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
+                                        <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" VerticalOptions="Center" />
+                                        <Button Text="⋮" FontSize="20" TextColor="Gray"
+                                                BackgroundColor="Transparent" Padding="0" CornerRadius="0"
+                                                WidthRequest="32" HeightRequest="32"
+                                                MinimumWidthRequest="0" MinimumHeightRequest="0"
+                                                VerticalOptions="Center"
+                                                IsVisible="{Binding HasMenu}"
+                                                Command="{Binding MessageMenuCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                CommandParameter="{Binding .}" />
+                                    </HorizontalStackLayout>
+                            </VerticalStackLayout>
                         </Border>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
