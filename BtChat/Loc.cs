@@ -57,6 +57,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["notifConnected"] = ("متصل است؛ اتصال در پس‌زمینه نگه داشته می‌شود", "Connected; keeping the link alive in the background"),
         ["notifRetrying"] = ("در حال اتصال مجدد...", "Reconnecting..."),
         ["battery"] = ("🔋 باتری", "🔋 Battery"),
+        ["batteryHint"] = ("برای اینکه اتصال و تماس‌ها وقتی برنامه در پس‌زمینه است یا صفحه خاموش شده، توسط سیستم بسته نشوند، این گزینه را باز کنید و برای برنامه «بدون محدودیت» را انتخاب کنید. در بعضی گوشی‌ها لازم است «شروع خودکار» را هم فعال کنید.", "Open this and set the app to \"Unrestricted\" so the system does not close the connection or calls when the app is in the background or the screen is off. Some phones also need Autostart enabled."),
         ["batteryAlready"] = ("اجرای بدون محدودیت باتری از قبل فعال است. اگر باز هم برنامه در پس‌زمینه بسته می‌شود، تنظیمات «شروع خودکار» یا «اجرا در پس‌زمینه» گوشی را هم بررسی کنید.", "Battery is already unrestricted. If the app is still closed in the background, also check your phone's autostart / background-run settings."),
         ["fileMissing"] = ("فایل اصلی دیگر در حافظه نیست (جابه‌جا یا پاک شده است)", "The original file is no longer on this device (moved or deleted)"),
         ["fileFailed"] = ("انتقال فایل ناموفق بود", "File transfer failed"),
