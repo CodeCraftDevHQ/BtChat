@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:BtChat"
+             x:Class="BtChat.ProxyPage"
+             Title="{Binding [proxyTitle], Source={x:Static local:Loc.Instance}}">
+    <Grid RowDefinitions="Auto,*" Padding="16,12,16,0" RowSpacing="8"
+          FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
+        <Grid ColumnDefinitions="*,Auto,Auto">
+            <Label Text="{Binding [proxyTitle], Source={x:Static local:Loc.Instance}}"
+                   FontSize="22" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+            <Button Grid.Column="1" Text="ⓘ" Style="{StaticResource QuietButton}" FontSize="20"
+                    Command="{Binding ShowHelpCommand}" />
+            <Button Grid.Column="2" Text="✕" Style="{StaticResource QuietButton}" FontSize="20"
+                    Clicked="OnCloseClicked" />
+        </Grid>
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="14" Padding="0,4,0,32">
+
+                <Label Text="{Binding [proxyIntro], Source={x:Static local:Loc.Instance}}"
+                       FontSize="13" TextColor="Gray" />
+
+                <!-- start / stop -->
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="10">
+                        <Button Text="{Binding ToggleText}" BackgroundColor="{Binding ToggleColor}" TextColor="White"
+                                FontAttributes="Bold" Command="{Binding ToggleCommand}" />
+                        <Label Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextColor="#EF4444" FontSize="13" />
+                        <Label Text="{Binding [proxyLimitReached], Source={x:Static local:Loc.Instance}}"
+                               IsVisible="{Binding IsLimitReached}" TextColor="#F59E0B" FontSize="13" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- address + QR -->
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [proxyAddress], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="{Binding [noNetwork], Source={x:Static local:Loc.Instance}}"
+                               IsVisible="{Binding NoAddresses}" FontSize="13" TextColor="Gray" />
+                        <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Addresses}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Tile}" Padding="12,10">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding CopyAddressCommand, Source={RelativeSource AncestorType={x:Type local:ProxyViewModel}}}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <Label Text="{Binding .}" FontSize="17" FontAttributes="Bold" VerticalOptions="Center" />
+                                            <Label Grid.Column="1" Text="⧉" FontSize="18" TextColor="Gray" VerticalOptions="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Label IsVisible="{Binding HasAddresses}" FontSize="12" TextColor="Gray"
+                               Text="{Binding [proxyTapCopy], Source={x:Static local:Loc.Instance}}" />
+                        <Label IsVisible="{Binding Copied}" FontSize="12" TextColor="#22C55E" FontAttributes="Bold"
+                               Text="{Binding [proxyCopied], Source={x:Static local:Loc.Instance}}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Button Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
+                                    Command="{Binding ShowQrCommand}" IsEnabled="{Binding CanShowQr}" />
+                            <Button Grid.Column="1" Text="↻" FontSize="20" Padding="0" WidthRequest="48"
+                                    Style="{StaticResource QuietButton}" Command="{Binding RefreshAddressesCommand}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- live statistics -->
+                <VerticalStackLayout Spacing="10" IsVisible="{Binding ShowStats}">
+                    <Label Style="{StaticResource SectionLabel}"
+                           Text="{Binding [proxyStats], Source={x:Static local:Loc.Instance}}" />
+                    <Border Style="{StaticResource Card}">
+                        <VerticalStackLayout Spacing="10">
+                            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                                <Border Style="{StaticResource Tile}">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding ConnectionsText}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                                        <Label Text="{Binding [proxyStatConn], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                                    </VerticalStackLayout>
+                                </Border>
+                                <Border Style="{StaticResource Tile}" Grid.Column="1">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding SpeedDownText}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                                        <Label Text="{Binding [proxyStatDown], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                                    </VerticalStackLayout>
+                                </Border>
+                                <Border Style="{StaticResource Tile}" Grid.Column="2">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding SpeedUpText}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                                        <Label Text="{Binding [proxyStatUp], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                                    </VerticalStackLayout>
+                                </Border>
+                                <Border Style="{StaticResource Tile}" Grid.Row="1">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding DevicesText}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                                        <Label Text="{Binding [proxyStatDevices], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                                    </VerticalStackLayout>
+                                </Border>
+                                <Border Style="{StaticResource Tile}" Grid.Row="1" Grid.Column="1">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding TotalDownText}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                                        <Label Text="{Binding [proxyStatTotalDown], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                                    </VerticalStackLayout>
+                                </Border>
+                                <Border Style="{StaticResource Tile}" Grid.Row="1" Grid.Column="2">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding TotalUpText}" FontSize="16" FontAttributes="Bold" HorizontalOptions="Center" />
+                                        <Label Text="{Binding [proxyStatTotalUp], Source={x:Static local:Loc.Instance}}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </Grid>
+
+                            <VerticalStackLayout Spacing="4" IsVisible="{Binding HasCap}">
+                                <Label Text="{Binding CapText}" FontSize="13" />
+                                <ProgressBar Progress="{Binding CapProgress}" />
+                            </VerticalStackLayout>
+
+                            <Label Text="{Binding [proxyClients], Source={x:Static local:Loc.Instance}}"
+                                   IsVisible="{Binding HasClients}" FontSize="12" FontAttributes="Bold" TextColor="Gray" />
+                            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Clients}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource Tile}" Padding="12,8">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                <VerticalStackLayout Spacing="1">
+                                                    <Label Text="{Binding Address}" FontAttributes="Bold" FontSize="14" />
+                                                    <Label Text="{Binding Detail}" FontSize="12" TextColor="Gray" />
+                                                </VerticalStackLayout>
+                                                <Label Grid.Column="1" Text="{Binding Badge}" IsVisible="{Binding LimitReached}"
+                                                       TextColor="#F59E0B" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <Button Text="{Binding [proxyResetCounters], Source={x:Static local:Loc.Instance}}"
+                                    Style="{StaticResource QuietButton}" Command="{Binding ResetCountersCommand}" />
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+                <!-- settings -->
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [proxyServerSettings], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="14">
+                        <Label Text="{Binding [proxyStopToEdit], Source={x:Static local:Loc.Instance}}"
+                               IsVisible="{Binding IsRunning}" FontSize="12" TextColor="Gray" />
+
+                        <VerticalStackLayout Spacing="14" IsEnabled="{Binding IsNotRunning}">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [proxyPort], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                <Entry Text="{Binding PortText}" Keyboard="Numeric" MaxLength="5" />
+                                <Label Text="{Binding [proxyPortHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Text="{Binding [proxyAuth], Source={x:Static local:Loc.Instance}}"
+                                           FontSize="14" VerticalOptions="Center" />
+                                    <Switch Grid.Column="1" IsToggled="{Binding AuthEnabled}" />
+                                </Grid>
+                                <Label Text="{Binding [proxyAuthHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                                <VerticalStackLayout Spacing="6" IsVisible="{Binding AuthEnabled}">
+                                    <Entry Text="{Binding Username}" MaxLength="40"
+                                           Placeholder="{Binding [proxyUser], Source={x:Static local:Loc.Instance}}" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                        <Entry Text="{Binding Password}" MaxLength="64" IsPassword="{Binding PasswordHidden}"
+                                               Placeholder="{Binding [proxyPass], Source={x:Static local:Loc.Instance}}" />
+                                        <Button Grid.Column="1" Text="👁" FontSize="18" Padding="0" WidthRequest="44"
+                                                Style="{StaticResource QuietButton}" Command="{Binding ToggleShowPasswordCommand}" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Text="{Binding [proxyLocalOnly], Source={x:Static local:Loc.Instance}}"
+                                           FontSize="14" VerticalOptions="Center" />
+                                    <Switch Grid.Column="1" IsToggled="{Binding LocalOnly}" />
+                                </Grid>
+                                <Label Text="{Binding [proxyLocalOnlyHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <!-- caps can be edited while sharing -->
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{Binding [proxyLimitTotal], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <Entry Text="{Binding TotalLimitText}" Keyboard="Numeric" MaxLength="8"
+                                       Placeholder="{Binding [proxyUnlimited], Source={x:Static local:Loc.Instance}}" />
+                                <local:Segmented Grid.Column="1" Items="{Binding UnitItems}"
+                                                 SelectedIndex="{Binding TotalLimitUnit}" WidthRequest="120" />
+                            </Grid>
+                            <Label Text="{Binding [proxyLimitClient], Source={x:Static local:Loc.Instance}}"
+                                   FontSize="14" Margin="0,8,0,0" />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <Entry Text="{Binding ClientLimitText}" Keyboard="Numeric" MaxLength="8"
+                                       Placeholder="{Binding [proxyUnlimited], Source={x:Static local:Loc.Instance}}" />
+                                <local:Segmented Grid.Column="1" Items="{Binding UnitItems}"
+                                                 SelectedIndex="{Binding ClientLimitUnit}" WidthRequest="120" />
+                            </Grid>
+                            <Label Text="{Binding [proxyLimitHint], Source={x:Static local:Loc.Instance}}"
+                                   FontSize="12" TextColor="Gray" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

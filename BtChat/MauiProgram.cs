@@ -51,6 +51,7 @@ public static class MauiProgram
 #endif
         builder.Services.AddSingleton<TcpTransport>();
         builder.Services.AddSingleton<DiscoveryService>();
+        builder.Services.AddSingleton<ProxyViewModel>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainPage>();
         return builder.Build();

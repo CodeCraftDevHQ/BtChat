@@ -15,6 +15,7 @@ public partial class MainViewModel : ObservableObject
     readonly IQrScanner qr;
     readonly DiscoveryService discovery;
     readonly IKeepAlive keepAlive;
+    readonly ProxyViewModel proxy;
     readonly IFileSource fileSource;
     readonly IPermissionGate permissions;
     bool btStarted;
@@ -357,11 +358,32 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsNotLinked));
         OnPropertyChanged(nameof(LinkedTitle));
         OnPropertyChanged(nameof(ConnectionDot));
-        keepAlive.Update(IsLinked, Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]);
+        UpdateKeepAlive();
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice, ICallVideo callVideoEngine)
+    // The background service stays up while the chat is linked or while the proxy is sharing.
+    void UpdateKeepAlive()
     {
+        var text = IsLinked
+            ? Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]
+            : proxy.NotificationText;
+        keepAlive.Update(IsLinked || proxy.IsRunning, text);
+    }
+
+    public ProxyViewModel Proxy => proxy;
+
+    [RelayCommand]
+    async Task OpenProxyAsync()
+    {
+        var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+        if (page == null) return;
+        await SafeAsync("open proxy", () => page.Navigation.PushModalAsync(new ProxyPage(proxy)));
+    }
+
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice, ICallVideo callVideoEngine, ProxyViewModel proxy)
+    {
+        this.proxy = proxy;
+        proxy.RunningChanged += UpdateKeepAlive;
         InitCalls(callAudioEngine, callAlertDevice, callVideoEngine);
         this.recorder = recorder;
         InitAudio(audioPlayer);
@@ -373,6 +395,7 @@ public partial class MainViewModel : ObservableObject
         {
             AppLog.Write("APP", "exit requested (removed from recent apps), disconnecting");
             Disconnect();
+            proxy.Stop();
         });
         this.qr = qr;
         this.discovery = discovery;
