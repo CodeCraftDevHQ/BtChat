@@ -53,10 +53,13 @@ public static class MauiProgram
         builder.Services.AddSingleton<DiscoveryService>();
 #if ANDROID
         builder.Services.AddSingleton<ISystemProxy, AndroidSystemProxy>();
+        builder.Services.AddSingleton<IVpnTunnel, AndroidVpnTunnel>();
 #elif WINDOWS
         builder.Services.AddSingleton<ISystemProxy, WindowsSystemProxy>();
+        builder.Services.AddSingleton<IVpnTunnel, NoVpnTunnel>();
 #else
         builder.Services.AddSingleton<ISystemProxy, NoSystemProxy>();
+        builder.Services.AddSingleton<IVpnTunnel, NoVpnTunnel>();
 #endif
         builder.Services.AddSingleton<ProxyClientViewModel>();
         builder.Services.AddSingleton<ProxyViewModel>();

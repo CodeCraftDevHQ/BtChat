@@ -289,6 +289,17 @@ public sealed class Loc : INotifyPropertyChanged
             "In the phone's Wi-Fi settings: tap the current network > Proxy > Manual, then enter the address and port above.\n\nNote: Android's Wi-Fi proxy has no password field; browsers usually ask for it, but some apps cannot use a password-protected proxy."),
         ["pcCopyAddress"] = ("کپی آدرس و پورت", "Copy address and port"),
         ["pcOpenWifi"] = ("باز کردن تنظیمات وای‌فای", "Open Wi-Fi settings"),
+        ["pcVpnHint"] = ("با روشن کردن VPN، ترافیک همه‌ی برنامه‌های این گوشی (یوتیوب، تلگرام و ...) از طریق اینترنت دستگاه سرور می‌رود. اندروید بار اول اجازه‌ی VPN می‌خواهد و یک آیکن کلید در نوار بالا نشان می‌دهد. نیازی به تنظیم پروکسی وای‌فای نیست.", "With the VPN on, the traffic of all apps on this phone (YouTube, Telegram and so on) goes through the server device's internet. Android asks for VPN permission the first time and shows a key icon in the status bar. You do not need to set the Wi-Fi proxy."),
+        ["pcVpnOn"] = ("روشن کردن VPN (همه برنامه‌ها)", "Start VPN (all apps)"),
+        ["pcVpnOff"] = ("خاموش کردن VPN", "Stop VPN"),
+        ["pcVpnStarted"] = ("VPN روشن شد؛ همه برنامه‌ها از اینترنت سرور استفاده می‌کنند", "VPN is on; all apps now use the server's internet"),
+        ["pcVpnStopped"] = ("VPN خاموش شد", "VPN is off"),
+        ["pcVpnDenied"] = ("اجازه‌ی VPN داده نشد", "VPN permission was not granted"),
+        ["pcVpnFailed"] = ("VPN روشن نشد: {0}", "Could not start the VPN: {0}"),
+        ["pcVpnStats"] = ("دانلود: {0}   آپلود: {1}   اتصال‌های باز: {2}", "Down: {0}   Up: {1}   Open connections: {2}"),
+        ["vpnNotifChannel"] = ("VPN", "VPN"),
+        ["vpnNotifTitle"] = ("BtChat VPN روشن است", "BtChat VPN is on"),
+        ["vpnNotifStop"] = ("خاموش کردن", "Turn off"),
         ["btoff"] = ("بلوتوث خاموش است یا دسترسی داده نشده", "Bluetooth is off or permission denied")
     };
 

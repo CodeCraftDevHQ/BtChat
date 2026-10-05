@@ -275,6 +275,14 @@
                            Text="{Binding [pcUse], Source={x:Static local:Loc.Instance}}" />
                     <Border Style="{StaticResource Card}">
                         <VerticalStackLayout Spacing="10">
+                            <VerticalStackLayout Spacing="10" IsVisible="{Binding Client.CanVpn}">
+                                <Label Text="{Binding [pcVpnHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                                <Button Text="{Binding Client.VpnToggleText}" Command="{Binding Client.ToggleVpnCommand}"
+                                        IsEnabled="{Binding Client.IsNotBusy}" FontAttributes="Bold" />
+                                <Label Text="{Binding Client.VpnStatsText}" IsVisible="{Binding Client.VpnActive}"
+                                       FontSize="12" TextColor="#22C55E" />
+                            </VerticalStackLayout>
                             <VerticalStackLayout Spacing="10" IsVisible="{Binding Client.CanApplySystem}">
                                 <Label Text="{Binding [pcSystemHint], Source={x:Static local:Loc.Instance}}"
                                        FontSize="12" TextColor="Gray" />

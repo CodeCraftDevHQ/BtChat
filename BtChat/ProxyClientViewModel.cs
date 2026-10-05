@@ -16,6 +16,8 @@ public partial class ProxyClientViewModel : ObservableObject
     readonly TcpTransport tcp;
     readonly IQrScanner qr;
     readonly ISystemProxy system;
+    readonly IVpnTunnel vpn;
+    Timer? vpnTimer;
 
     // Set while the page is open, so dialogs appear on top of it.
     public Page? Host { get; set; }
@@ -29,13 +31,17 @@ public partial class ProxyClientViewModel : ObservableObject
     [ObservableProperty] string statusText = "";
     [ObservableProperty] Color statusColor = Colors.Gray;
     [ObservableProperty] bool systemActive;
+    [ObservableProperty] bool vpnActive;
+    [ObservableProperty] string vpnStatsText = "";
 
-    public ProxyClientViewModel(TcpTransport tcp, IQrScanner qr, ISystemProxy system)
+    public ProxyClientViewModel(TcpTransport tcp, IQrScanner qr, ISystemProxy system, IVpnTunnel vpn)
     {
+        this.vpn = vpn;
         this.tcp = tcp;
         this.qr = qr;
         this.system = system;
         Loc.Instance.PropertyChanged += (_, _) => MainThread.BeginInvokeOnMainThread(() => OnPropertyChanged(string.Empty));
+        vpn.StateChanged += () => MainThread.BeginInvokeOnMainThread(SyncVpnState);
 
         // A proxy left behind by a crash or a kill would break the internet: put the old settings back.
         try
@@ -60,6 +66,7 @@ public partial class ProxyClientViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsNotBusy));
     partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(HasStatus));
     partial void OnSystemActiveChanged(bool value) => OnPropertyChanged(nameof(SystemToggleText));
+    partial void OnVpnActiveChanged(bool value) => OnPropertyChanged(nameof(VpnToggleText));
 
     public bool PasswordHidden => !ShowPassword;
     public bool IsNotBusy => !IsBusy;
@@ -68,6 +75,8 @@ public partial class ProxyClientViewModel : ObservableObject
     public bool CanApplySystem => system.CanApply;
     public bool ShowManualHint => !system.CanApply;
     public bool CanOpenSettings => system.CanOpenNetworkSettings;
+    public bool CanVpn => vpn.IsSupported;
+    public string VpnToggleText => Loc.Instance[VpnActive ? "pcVpnOff" : "pcVpnOn"];
     public string SystemToggleText => Loc.Instance[SystemActive ? "pcSystemOff" : "pcSystemOn"];
 
     void SetStatus(string text, Color color)
@@ -261,6 +270,80 @@ public partial class ProxyClientViewModel : ObservableObject
         {
             AppLog.Error(Tag, "apply failed", ex);
             SetStatus(string.Format(loc["pcSystemFailed"], ex.Message), Red);
+        }
+    }
+
+    void SyncVpnState()
+    {
+        var running = vpn.IsRunning;
+        if (running != VpnActive)
+        {
+            VpnActive = running;
+            if (!running)
+            {
+                vpnTimer?.Dispose();
+                vpnTimer = null;
+                VpnStatsText = "";
+                if (!IsBusy) SetStatus(Loc.Instance["pcVpnStopped"], Colors.Gray);
+            }
+        }
+        if (running && vpnTimer == null)
+            vpnTimer = new Timer(_ => MainThread.BeginInvokeOnMainThread(UpdateVpnStats), null, 1000, 1000);
+        UpdateVpnStats();
+    }
+
+    void UpdateVpnStats()
+    {
+        if (!vpn.IsRunning) return;
+        VpnStatsText = string.Format(Loc.Instance["pcVpnStats"], ProxyViewModel.FormatBytes(vpn.BytesDown),
+            ProxyViewModel.FormatBytes(vpn.BytesUp), vpn.ActiveFlows);
+    }
+
+    [RelayCommand]
+    async Task ToggleVpnAsync()
+    {
+        if (IsBusy) return;
+        var loc = Loc.Instance;
+        if (vpn.IsRunning)
+        {
+            vpn.Stop();
+            return;
+        }
+        if (!TryGetTarget(out var host, out var port, out var user, out var pass)) return;
+        IsBusy = true;
+        SetStatus(loc["pcTesting"], Colors.Gray);
+        try
+        {
+            var probe = await ProxyProbe.RunAsync(host, port, user, pass, CancellationToken.None);
+            AppLog.Write(Tag, $"vpn pre-test {host}:{port} -> {probe.Status} {probe.Detail}");
+            if (probe.Status != ProbeStatus.Ok)
+            {
+                ShowResult(probe, host, port);
+                return;
+            }
+            var result = await vpn.StartAsync(host, port, user, pass);
+            switch (result)
+            {
+                case VpnStartResult.Started:
+                    SetStatus(loc["pcVpnStarted"], Green);
+                    break;
+                case VpnStartResult.PermissionDenied:
+                    SetStatus(loc["pcVpnDenied"], Red);
+                    break;
+                default:
+                    SetStatus(string.Format(loc["pcVpnFailed"], vpn.LastError ?? "?"), Red);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(Tag, "vpn toggle failed", ex);
+            SetStatus(string.Format(loc["pcError"], ex.Message), Red);
+        }
+        finally
+        {
+            IsBusy = false;
+            SyncVpnState();
         }
     }
 
