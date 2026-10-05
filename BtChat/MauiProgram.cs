@@ -51,6 +51,14 @@ public static class MauiProgram
 #endif
         builder.Services.AddSingleton<TcpTransport>();
         builder.Services.AddSingleton<DiscoveryService>();
+#if ANDROID
+        builder.Services.AddSingleton<ISystemProxy, AndroidSystemProxy>();
+#elif WINDOWS
+        builder.Services.AddSingleton<ISystemProxy, WindowsSystemProxy>();
+#else
+        builder.Services.AddSingleton<ISystemProxy, NoSystemProxy>();
+#endif
+        builder.Services.AddSingleton<ProxyClientViewModel>();
         builder.Services.AddSingleton<ProxyViewModel>();
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainPage>();

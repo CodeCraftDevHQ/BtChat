@@ -17,6 +17,10 @@
         <ScrollView Grid.Row="1">
             <VerticalStackLayout Spacing="14" Padding="0,4,0,32">
 
+                <local:Segmented Items="{Binding ModeItems}" SelectedIndex="{Binding ModeIndex}" />
+
+                <!-- ================= server ================= -->
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding ShowServer}">
                 <Label Text="{Binding [proxyIntro], Source={x:Static local:Loc.Instance}}"
                        FontSize="13" TextColor="Gray" />
 
@@ -212,6 +216,82 @@
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
+
+                <!-- ================= client ================= -->
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding ShowClient}">
+                    <Label Text="{Binding [pcIntro], Source={x:Static local:Loc.Instance}}"
+                           FontSize="13" TextColor="Gray" />
+
+                    <Border Style="{StaticResource Tile}" IsVisible="{Binding Client.CanScanQr}"
+                            IsEnabled="{Binding Client.IsNotBusy}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Client.ScanQrCommand}" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Padding="4,2">
+                            <Label Text="📷" FontSize="26" VerticalOptions="Center" />
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                <Label Text="{Binding [pcScanQr], Source={x:Static local:Loc.Instance}}"
+                                       FontAttributes="Bold" FontSize="14" />
+                                <Label Text="{Binding [pcScanQrHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="11" TextColor="Gray" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <Label Style="{StaticResource SectionLabel}"
+                           Text="{Binding [pcManual], Source={x:Static local:Loc.Instance}}" />
+                    <Border Style="{StaticResource Card}">
+                        <VerticalStackLayout Spacing="10">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [pcHost], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                <Entry Text="{Binding Client.HostText}" Placeholder="192.168.43.1" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [proxyPort], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                <Entry Text="{Binding Client.PortText}" Keyboard="Numeric" MaxLength="5" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [pcAuthLabel], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                                <Entry Text="{Binding Client.Username}" MaxLength="40"
+                                       Placeholder="{Binding [proxyUser], Source={x:Static local:Loc.Instance}}" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                    <Entry Text="{Binding Client.Password}" MaxLength="64" IsPassword="{Binding Client.PasswordHidden}"
+                                           Placeholder="{Binding [proxyPass], Source={x:Static local:Loc.Instance}}" />
+                                    <Button Grid.Column="1" Text="👁" FontSize="18" Padding="0" WidthRequest="44"
+                                            Style="{StaticResource QuietButton}" Command="{Binding Client.ToggleShowPasswordCommand}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                            <Button Text="{Binding [pcTest], Source={x:Static local:Loc.Instance}}"
+                                    Command="{Binding Client.TestCommand}" IsEnabled="{Binding Client.IsNotBusy}" />
+                            <ActivityIndicator IsRunning="{Binding Client.IsBusy}" IsVisible="{Binding Client.IsBusy}" />
+                            <Label Text="{Binding Client.StatusText}" TextColor="{Binding Client.StatusColor}"
+                                   IsVisible="{Binding Client.HasStatus}" FontSize="13" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Label Style="{StaticResource SectionLabel}"
+                           Text="{Binding [pcUse], Source={x:Static local:Loc.Instance}}" />
+                    <Border Style="{StaticResource Card}">
+                        <VerticalStackLayout Spacing="10">
+                            <VerticalStackLayout Spacing="10" IsVisible="{Binding Client.CanApplySystem}">
+                                <Label Text="{Binding [pcSystemHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                                <Button Text="{Binding Client.SystemToggleText}" Command="{Binding Client.ToggleSystemProxyCommand}" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Spacing="10" IsVisible="{Binding Client.ShowManualHint}">
+                                <Label Text="{Binding [pcManualHint], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="12" TextColor="Gray" />
+                                <Button Text="{Binding [pcCopyAddress], Source={x:Static local:Loc.Instance}}"
+                                        Command="{Binding Client.CopyAddressCommand}" />
+                                <Button Text="{Binding [pcOpenWifi], Source={x:Static local:Loc.Instance}}"
+                                        Command="{Binding Client.OpenNetworkSettingsCommand}"
+                                        IsVisible="{Binding Client.CanOpenSettings}" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
     </Grid>

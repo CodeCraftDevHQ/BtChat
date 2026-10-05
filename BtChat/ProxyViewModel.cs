@@ -32,7 +32,19 @@ public partial class ProxyViewModel : ObservableObject
     string clientSignature = "";
 
     // Set by the page while it is open, so dialogs and the QR page appear on top of it.
-    public Page? Host { get; set; }
+    Page? host;
+    public Page? Host
+    {
+        get => host;
+        set
+        {
+            host = value;
+            Client.Host = value;
+        }
+    }
+
+    // Client side (connect to another device's proxy).
+    public ProxyClientViewModel Client { get; }
 
     // Raised on the UI thread after the server started or stopped.
     public event Action? RunningChanged;
@@ -55,9 +67,24 @@ public partial class ProxyViewModel : ObservableObject
     [ObservableProperty] string errorText = "";
     [ObservableProperty] bool copied;
 
-    public ProxyViewModel(TcpTransport tcp)
+    // 0 = this device shares its internet (server), 1 = this device uses another device's proxy (client).
+    [ObservableProperty] int modeIndex = Preferences.Default.Get("proxyMode", 0) == 1 ? 1 : 0;
+
+    public string[] ModeItems => new[] { Loc.Instance["proxyModeServer"], Loc.Instance["proxyModeClient"] };
+    public bool ShowServer => ModeIndex == 0;
+    public bool ShowClient => ModeIndex == 1;
+
+    partial void OnModeIndexChanged(int value)
+    {
+        Preferences.Default.Set("proxyMode", value);
+        OnPropertyChanged(nameof(ShowServer));
+        OnPropertyChanged(nameof(ShowClient));
+    }
+
+    public ProxyViewModel(TcpTransport tcp, ProxyClientViewModel client)
     {
         this.tcp = tcp;
+        Client = client;
         server.StatsChanged += s => MainThread.BeginInvokeOnMainThread(() => Apply(s));
         Loc.Instance.PropertyChanged += (_, _) => MainThread.BeginInvokeOnMainThread(() => OnPropertyChanged(string.Empty));
         RefreshAddresses();
