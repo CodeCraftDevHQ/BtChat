@@ -49,7 +49,9 @@ public sealed record ProxySnapshot(
     long TotalLimitBytes,
     long PerClientLimitBytes,
     bool TotalLimitReached,
-    IReadOnlyList<ProxyClientInfo> Clients);
+    IReadOnlyList<ProxyClientInfo> Clients,
+    bool Reverse = false,      // true = this device dials out to the receiver (reverse connection)
+    int ReverseReady = 0);     // reverse connections that are connected and waiting for a request
 
 // Plain TCP proxy that speaks HTTP (plain + CONNECT for https) and SOCKS5 (CONNECT) on a single port.
 // Outgoing connections use the normal route of this device, so when a VPN is active here the
@@ -59,6 +61,7 @@ public sealed class ProxyServer : IDisposable
     const string Tag = "Proxy";
     const int MaxConnections = 512;
     const int MaxHeadBytes = 32 * 1024;
+    const int ReversePoolSize = 6;
     static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
     static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(15);
 
@@ -92,6 +95,8 @@ public sealed class ProxyServer : IDisposable
     System.Threading.Timer? timer;
     bool running;
     int logBudget;
+    bool reverseMode;
+    int reverseReady;
     long selfTestUntil;
     HashSet<IPAddress> selfTestAddresses = new();
 
@@ -107,6 +112,7 @@ public sealed class ProxyServer : IDisposable
     DateTime ownAddressesAt = DateTime.MinValue;
 
     public bool IsRunning => running;
+    public bool IsReverse => reverseMode;
     public int Port => options.Port;
 
     // Raised about once a second while running (from a thread-pool thread) and once more on Stop.
@@ -171,7 +177,9 @@ public sealed class ProxyServer : IDisposable
             timer?.Dispose();
             timer = null;
             listener = null;
+            reverseMode = false;
         }
+        Interlocked.Exchange(ref reverseReady, 0);
         CloseAll();
         lock (statsLock)
         {
@@ -239,7 +247,8 @@ public sealed class ProxyServer : IDisposable
                 running, options.Port, activeConnections,
                 clients.Values.Count(c => c.Connections > 0),
                 speedDown, speedUp, totalDown, totalUp,
-                totalLimit, perClientLimit, totalLimitReached, list);
+                totalLimit, perClientLimit, totalLimitReached, list,
+                reverseMode, Volatile.Read(ref reverseReady));
         }
     }
 
@@ -262,6 +271,154 @@ public sealed class ProxyServer : IDisposable
         }
         try { StatsChanged?.Invoke(GetSnapshot()); }
         catch (Exception ex) { AppLog.Error(Tag, "stats listener failed", ex); }
+    }
+
+    // ---------------------------------------------------------------- reverse connection
+
+    // Reverse mode: instead of waiting for clients, this device dials out to the receiver
+    // (a device that opens a "link port"). Outgoing connections work even where incoming ones are
+    // swallowed by the phone's tunnel. Several ready connections are kept; when the receiver sends
+    // a request over one of them, it is handled exactly like an accepted client and a new one is dialed.
+    // Options.Password (when auth is on) is the pairing password; the proxy login itself is not used.
+    public void StartReverse(ProxyOptions o, string host, int port)
+    {
+        host = (host ?? "").Trim();
+        if (host.Length == 0) throw new ArgumentException("Receiver address is empty", nameof(host));
+        if (port is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(port), "Port must be 1-65535");
+
+        lock (lifecycle)
+        {
+            if (running) throw new InvalidOperationException("Proxy is already running");
+
+            options = o.Clone();
+            options.Port = port;
+            var secret = options.AuthRequired ? (options.Password ?? "") : "";
+            options.Username = null;
+            options.Password = null;
+            Interlocked.Exchange(ref logBudget, 0);
+            Interlocked.Exchange(ref reverseReady, 0);
+            lock (statsLock)
+            {
+                clients.Clear();
+                activeConnections = 0;
+                totalDown = totalUp = lastDown = lastUp = speedDown = speedUp = 0;
+                totalLimit = options.TotalLimitBytes;
+                perClientLimit = options.PerClientLimitBytes;
+                totalLimitReached = false;
+                lastTick = Stopwatch.GetTimestamp();
+            }
+
+            cts = new CancellationTokenSource();
+            listener = null;
+            reverseMode = true;
+            running = true;
+            var token = cts.Token;
+            for (var i = 0; i < ReversePoolSize; i++)
+            {
+                var slot = i;
+                _ = Task.Run(() => ReverseSlotAsync(host, port, secret, slot, token));
+            }
+            timer = new System.Threading.Timer(OnTick, null, 1000, 1000);
+            AppLog.Write(Tag, $"reverse mode started towards {host}:{port} (pairing password={(secret.Length > 0 ? "on" : "off")}, totalLimit={totalLimit}, perClientLimit={perClientLimit})");
+        }
+    }
+
+    // One of the ready connections: dial, pair, wait for the first request byte, hand it over, repeat.
+    async Task ReverseSlotAsync(string host, int port, string secret, int slot, CancellationToken ct)
+    {
+        var failures = 0;
+        while (!ct.IsCancellationRequested)
+        {
+            Socket? sock = null;
+            var counted = false;
+            var born = Stopwatch.GetTimestamp();
+            try
+            {
+                sock = await ReverseDialAsync(host, port, secret, ct);
+                born = Stopwatch.GetTimestamp();
+                Interlocked.Increment(ref reverseReady);
+                counted = true;
+                if (slot == 0 && failures == 0) LogFew($"reverse: connected to {host}:{port}");
+
+                // wait (without consuming) until the receiver sends the first request byte
+                var one = new byte[1];
+                int n = await sock.ReceiveAsync(one.AsMemory(), SocketFlags.Peek, ct);
+                if (n == 0)
+                {
+                    // closed by the receiver while idle (receiver stopped, wrong password, network change ...)
+                    throw new IOException("closed by the receiver");
+                }
+
+                Interlocked.Decrement(ref reverseReady);
+                counted = false;
+                var handed = sock;
+                sock = null;
+                failures = 0;
+                _ = Task.Run(() => HandleConnectionAsync(handed, true, ct));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                var lived = Stopwatch.GetElapsedTime(born).TotalSeconds;
+                failures = lived > 15 ? 1 : failures + 1;
+                var reason = ex is SocketException se ? se.SocketErrorCode.ToString() : ex.Message;
+                if (slot == 0 && failures <= 3)
+                    AppLog.Write(Tag, $"reverse: link to {host}:{port} lost or refused ({reason}); wrong password or receiver not started?");
+                else if (slot == 0)
+                    AppLog.Verbose(Tag, $"reverse: link to {host}:{port} failed again ({reason})");
+            }
+            finally
+            {
+                if (counted) Interlocked.Decrement(ref reverseReady);
+                CloseQuiet(sock);
+            }
+            if (ct.IsCancellationRequested) break;
+            if (failures > 0)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(failures, 5)), ct); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+    }
+
+    async Task<Socket> ReverseDialAsync(string host, int port, string secret, CancellationToken ct)
+    {
+        IPAddress[] addresses;
+        if (IPAddress.TryParse(host, out var literal)) addresses = new[] { literal };
+        else addresses = await Dns.GetHostAddressesAsync(host, ct);
+
+        Exception? last = null;
+        foreach (var address in addresses.OrderBy(a => a.AddressFamily == AddressFamily.InterNetwork ? 0 : 1))
+        {
+            var sock = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                using var cc = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cc.CancelAfter(ConnectTimeout);
+                await sock.ConnectAsync(new IPEndPoint(address, port), cc.Token);
+                try { sock.NoDelay = true; } catch { }
+                try { sock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true); } catch { }
+
+                // pairing: the receiver sends a random challenge, we answer with magic + HMAC(password, challenge)
+                using var pair = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                pair.CancelAfter(TimeSpan.FromSeconds(10));
+                var challenge = new byte[ReverseProtocol.ChallengeSize];
+                await ReverseProtocol.ReceiveExactAsync(sock, challenge, pair.Token);
+                var reply = ReverseProtocol.BuildReply(secret, challenge);
+                await SendAllAsync(sock, reply, reply.Length, pair.Token);
+                return sock;
+            }
+            catch (Exception ex)
+            {
+                sock.Dispose();
+                if (ct.IsCancellationRequested) throw;
+                last = ex;
+            }
+        }
+        throw last ?? new SocketException((int)SocketError.HostNotFound);
     }
 
     // ---------------------------------------------------------------- accepting
@@ -292,7 +449,12 @@ public sealed class ProxyServer : IDisposable
             catch
             {
             }
-            _ = Task.Run(() => HandleConnectionAsync(tcp, ct));
+            var accepted = tcp;
+            _ = Task.Run(async () =>
+            {
+                try { await HandleConnectionAsync(accepted.Client, false, ct); }
+                finally { try { accepted.Dispose(); } catch { } }
+            });
         }
     }
 
@@ -393,28 +555,27 @@ public sealed class ProxyServer : IDisposable
         }
     }
 
-    async Task HandleConnectionAsync(TcpClient tcp, CancellationToken ct)
+    // reverse = the socket was dialed by this device towards the receiver (it is not an accepted client).
+    async Task HandleConnectionAsync(Socket clientSock, bool reverse, CancellationToken ct)
     {
         ClientState? cs = null;
-        Socket? clientSock = null;
         Socket? target = null;
         var addr = "?";
         try
         {
-            clientSock = tcp.Client;
             var ip = (clientSock.RemoteEndPoint as IPEndPoint)?.Address;
             if (ip == null) return;
             if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
             addr = ip.ToString();
 
-            if (Stopwatch.GetTimestamp() < Interlocked.Read(ref selfTestUntil) &&
+            if (!reverse && Stopwatch.GetTimestamp() < Interlocked.Read(ref selfTestUntil) &&
                 (IPAddress.IsLoopback(ip) || selfTestAddresses.Contains(ip)))
             {
                 AppLog.Write(Tag, $"self-test connection accepted from {addr}");
                 return;
             }
 
-            if (options.LocalNetworkOnly && !IsLocalNetwork(ip))
+            if (!reverse && options.LocalNetworkOnly && !IsLocalNetwork(ip))
             {
                 AppLog.Write(Tag, $"rejected {addr}: not a local network address");
                 return;
@@ -426,9 +587,9 @@ public sealed class ProxyServer : IDisposable
                 return;
             }
 
-            tcp.NoDelay = true;
+            try { clientSock.NoDelay = true; } catch { }
             try { clientSock.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true); } catch { }
-            var stream = tcp.GetStream();
+            var stream = new NetworkStream(clientSock, false);
 
             Handshake? hs;
             using (var hsCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
@@ -473,7 +634,7 @@ public sealed class ProxyServer : IDisposable
         {
             if (cs != null) Unregister(cs, clientSock, target);
             CloseQuiet(target);
-            try { tcp.Dispose(); } catch { }
+            CloseQuiet(clientSock);
         }
     }
 

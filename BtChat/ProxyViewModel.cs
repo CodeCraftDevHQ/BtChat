@@ -24,9 +24,10 @@ public partial class ProxyViewModel : ObservableObject
     static readonly Color Orange = Color.FromArgb("#F59E0B");
 
     static readonly ProxySnapshot Empty =
-        new(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, Array.Empty<ProxyClientInfo>());
+        new(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, Array.Empty<ProxyClientInfo>(), false, 0);
 
     readonly TcpTransport tcp;
+    readonly IQrScanner qr;
     readonly ProxyServer server = new();
     ProxySnapshot snapshot = Empty;
     string clientSignature = "";
@@ -67,6 +68,31 @@ public partial class ProxyViewModel : ObservableObject
     [ObservableProperty] string errorText = "";
     [ObservableProperty] bool copied;
 
+    // Reverse connection (this device dials out to a receiving device instead of waiting for clients).
+    [ObservableProperty] int shareKindIndex = Preferences.Default.Get("proxyKind", 0) == 1 ? 1 : 0;
+    [ObservableProperty] string reverseHost = Preferences.Default.Get("proxyRvHost", "");
+    [ObservableProperty] string reversePortText = Preferences.Default.Get("proxyRvPort", "8081");
+    [ObservableProperty] string pairPassword = Preferences.Default.Get("proxyRvPass", "");
+    [ObservableProperty] bool showPairPassword;
+
+    public string[] ShareKindItems => new[] { Loc.Instance["proxyKindDirect"], Loc.Instance["proxyKindReverse"] };
+    public bool ShowDirect => ShareKindIndex == 0;
+    public bool ShowReverse => ShareKindIndex == 1;
+    public bool PairPasswordHidden => !ShowPairPassword;
+    public bool CanScanReceiverQr => qr.IsSupported;
+
+    partial void OnShareKindIndexChanged(int value)
+    {
+        Preferences.Default.Set("proxyKind", value);
+        OnPropertyChanged(nameof(ShowDirect));
+        OnPropertyChanged(nameof(ShowReverse));
+    }
+
+    partial void OnReverseHostChanged(string value) => Preferences.Default.Set("proxyRvHost", value ?? "");
+    partial void OnReversePortTextChanged(string value) => Preferences.Default.Set("proxyRvPort", value ?? "");
+    partial void OnPairPasswordChanged(string value) => Preferences.Default.Set("proxyRvPass", value ?? "");
+    partial void OnShowPairPasswordChanged(bool value) => OnPropertyChanged(nameof(PairPasswordHidden));
+
     // 0 = this device shares its internet (server), 1 = this device uses another device's proxy (client).
     [ObservableProperty] int modeIndex = Preferences.Default.Get("proxyMode", 0) == 1 ? 1 : 0;
 
@@ -81,10 +107,18 @@ public partial class ProxyViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowClient));
     }
 
-    public ProxyViewModel(TcpTransport tcp, ProxyClientViewModel client)
+    public ProxyViewModel(TcpTransport tcp, ProxyClientViewModel client, IQrScanner qr)
     {
         this.tcp = tcp;
+        this.qr = qr;
         Client = client;
+        client.ReceiverChanged += () =>
+        {
+            OnPropertyChanged(nameof(StatusLine));
+            OnPropertyChanged(nameof(DotColor));
+            OnPropertyChanged(nameof(IsActive));
+            RunningChanged?.Invoke();
+        };
         server.StatsChanged += s => MainThread.BeginInvokeOnMainThread(() => Apply(s));
         Loc.Instance.PropertyChanged += (_, _) => MainThread.BeginInvokeOnMainThread(() => OnPropertyChanged(string.Empty));
         RefreshAddresses();
@@ -131,6 +165,7 @@ public partial class ProxyViewModel : ObservableObject
     partial void OnIsRunningChanged(bool value)
     {
         OnPropertyChanged(nameof(IsNotRunning));
+        OnPropertyChanged(nameof(IsActive));
         OnPropertyChanged(nameof(ToggleText));
         OnPropertyChanged(nameof(ToggleColor));
         OnPropertyChanged(nameof(StatusLine));
@@ -154,6 +189,9 @@ public partial class ProxyViewModel : ObservableObject
     // ---------------------------------------------------------------- state for the UI
 
     public bool IsNotRunning => !IsRunning;
+
+    // Sharing or receiving: either keeps the background service alive.
+    public bool IsActive => IsRunning || Client.ReceiverRunning;
     public bool PasswordHidden => !ShowPassword;
     public bool HasError => ErrorText.Length > 0;
     public bool CanShowQr => IsRunning;
@@ -166,14 +204,22 @@ public partial class ProxyViewModel : ObservableObject
 
     public string ToggleText => Loc.Instance[IsRunning ? "proxyStop" : "proxyStart"];
     public Color ToggleColor => IsRunning ? Red : Green;
-    public Color DotColor => IsRunning ? (IsLimitReached ? Orange : Green) : Colors.Gray;
+    public Color DotColor => IsRunning ? (IsLimitReached ? Orange : Green) : (Client.ReceiverRunning ? Green : Colors.Gray);
 
     // Short line for the side drawer.
     public string StatusLine => IsRunning
-        ? string.Format(Loc.Instance["proxyStatusRunning"], server.Port, snapshot.ActiveClients)
-        : Loc.Instance["proxyDrawerHint"];
+        ? (snapshot.Reverse
+            ? string.Format(Loc.Instance["proxyStatusReverse"], ReverseHost.Trim(), snapshot.ReverseReady)
+            : string.Format(Loc.Instance["proxyStatusRunning"], server.Port, snapshot.ActiveClients))
+        : Client.ReceiverRunning
+            ? string.Format(Loc.Instance["rvStatusRunning"], Client.LinkPortText.Trim(), Client.LocalPortText.Trim())
+            : Loc.Instance["proxyDrawerHint"];
 
-    public string NotificationText => string.Format(Loc.Instance["proxyNotif"], server.Port);
+    public string NotificationText => IsRunning
+        ? (server.IsReverse
+            ? string.Format(Loc.Instance["proxyNotifReverse"], ReverseHost.Trim())
+            : string.Format(Loc.Instance["proxyNotif"], server.Port))
+        : string.Format(Loc.Instance["rvNotif"], Client.LinkPortText.Trim());
 
     public string ConnectionsText => snapshot.ActiveConnections.ToString(CultureInfo.InvariantCulture);
     public string DevicesText => snapshot.ActiveClients.ToString(CultureInfo.InvariantCulture);
@@ -237,18 +283,40 @@ public partial class ProxyViewModel : ObservableObject
 
         ErrorText = "";
         var loc = Loc.Instance;
-        if (!int.TryParse(Normalize(PortText).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var port) || port < 1 || port > 65535)
-        {
-            ErrorText = loc["proxyBadPort"];
-            return;
-        }
+        var port = 0;
+        var reversePort = 0;
         string? user = null, pass = null;
-        if (AuthEnabled)
+        if (ShowReverse)
         {
-            user = Username.Trim();
-            pass = Password;
-            if (user.Length == 0 || pass.Length == 0) { ErrorText = loc["proxyNeedCreds"]; return; }
-            if (user.Contains(':')) { ErrorText = loc["proxyBadUser"]; return; }
+            var target = ReverseHost.Trim();
+            if (target.Length == 0 || target.Contains(' ')) { ErrorText = loc["proxyNeedReceiver"]; return; }
+            if (!int.TryParse(Normalize(ReversePortText).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out reversePort) || reversePort < 1 || reversePort > 65535)
+            {
+                ErrorText = loc["proxyBadPort"];
+                return;
+            }
+            // the pairing password travels in the options like a proxy password (the proxy login itself is not used)
+            if (PairPassword.Length > 0)
+            {
+                user = "pair";
+                pass = PairPassword;
+            }
+            port = reversePort;
+        }
+        else
+        {
+            if (!int.TryParse(Normalize(PortText).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out port) || port < 1 || port > 65535)
+            {
+                ErrorText = loc["proxyBadPort"];
+                return;
+            }
+            if (AuthEnabled)
+            {
+                user = Username.Trim();
+                pass = Password;
+                if (user.Length == 0 || pass.Length == 0) { ErrorText = loc["proxyNeedCreds"]; return; }
+                if (user.Contains(':')) { ErrorText = loc["proxyBadUser"]; return; }
+            }
         }
         if (!TryParseLimit(TotalLimitText, TotalLimitUnit, out var total) ||
             !TryParseLimit(ClientLimitText, ClientLimitUnit, out var perClient))
@@ -268,7 +336,10 @@ public partial class ProxyViewModel : ObservableObject
         };
         try
         {
-            server.Start(options);
+            if (ShowReverse)
+                server.StartReverse(options, ReverseHost.Trim(), reversePort);
+            else
+                server.Start(options);
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
         {
@@ -292,6 +363,13 @@ public partial class ProxyViewModel : ObservableObject
         RefreshAddresses();
         Apply(server.GetSnapshot());
         RunningChanged?.Invoke();
+    }
+
+    // Stops sharing and receiving (used when the app is closed).
+    public void StopAll()
+    {
+        Client.StopReceiver();
+        Stop();
     }
 
     public void Stop()
@@ -378,6 +456,68 @@ public partial class ProxyViewModel : ObservableObject
             AppLog.Error(Tag, "show qr failed", ex);
         }
     }
+
+    [RelayCommand]
+    async Task ScanReceiverQrAsync()
+    {
+        if (!qr.IsSupported || IsRunning) return;
+        var loc = Loc.Instance;
+        string? text;
+        try
+        {
+            text = await qr.ScanAsync();
+        }
+        catch (PermissionException ex)
+        {
+            AppLog.Error(Tag, "camera permission denied", ex);
+            ErrorText = loc["qrNoCamera"];
+            return;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(Tag, "scan failed", ex);
+            ErrorText = loc["qrFailed"];
+            return;
+        }
+        if (text == null) return;
+
+        if (!ReverseQrPayload.TryParse(text, out var info))
+        {
+            AppLog.Write(Tag, "scanned a QR that is not a receiver code");
+            ErrorText = loc["pcQrInvalid"];
+            return;
+        }
+
+        ErrorText = "";
+        var candidates = tcp.OrderCandidates(info.Addresses).ToList();
+        if (candidates.Count == 0) candidates = info.Addresses.ToList();
+        var chosen = candidates[0];
+        if (candidates.Count > 1)
+        {
+            var tests = await Task.WhenAll(candidates.Select(async c =>
+            {
+                try
+                {
+                    using var client = new TcpClient();
+                    using var cts = new CancellationTokenSource(2000);
+                    await client.ConnectAsync(c, info.Port, cts.Token);
+                    return c;
+                }
+                catch
+                {
+                    return null;
+                }
+            }));
+            chosen = candidates.FirstOrDefault(c => tests.Contains(c)) ?? chosen;
+        }
+        ReverseHost = chosen;
+        ReversePortText = info.Port.ToString(CultureInfo.InvariantCulture);
+        PairPassword = info.Password ?? "";
+        AppLog.Write(Tag, $"receiver qr: '{info.Name}' addresses=[{string.Join(", ", info.Addresses)}] chosen={chosen}:{info.Port} (password in qr: {info.Password != null})");
+    }
+
+    [RelayCommand]
+    void ToggleShowPairPassword() => ShowPairPassword = !ShowPairPassword;
 
     [RelayCommand]
     async Task ShowHelpAsync()

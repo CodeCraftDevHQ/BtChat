@@ -24,6 +24,9 @@
                 <Label Text="{Binding [proxyIntro], Source={x:Static local:Loc.Instance}}"
                        FontSize="13" TextColor="Gray" />
 
+                <local:Segmented Items="{Binding ShareKindItems}" SelectedIndex="{Binding ShareKindIndex}"
+                                 IsEnabled="{Binding IsNotRunning}" />
+
                 <!-- start / stop -->
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="10">
@@ -35,7 +38,8 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- address + QR -->
+                <!-- address + QR (direct sharing only) -->
+                <VerticalStackLayout Spacing="14" IsVisible="{Binding ShowDirect}">
                 <Label Style="{StaticResource SectionLabel}"
                        Text="{Binding [proxyAddress], Source={x:Static local:Loc.Instance}}" />
                 <Border Style="{StaticResource Card}">
@@ -71,6 +75,7 @@
                         </Grid>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
                 <!-- live statistics -->
                 <VerticalStackLayout Spacing="10" IsVisible="{Binding ShowStats}">
@@ -155,7 +160,38 @@
                         <Label Text="{Binding [proxyStopToEdit], Source={x:Static local:Loc.Instance}}"
                                IsVisible="{Binding IsRunning}" FontSize="12" TextColor="Gray" />
 
-                        <VerticalStackLayout Spacing="14" IsEnabled="{Binding IsNotRunning}">
+                        <VerticalStackLayout Spacing="12" IsVisible="{Binding ShowReverse}" IsEnabled="{Binding IsNotRunning}">
+                            <Label Text="{Binding [proxyReverseHint], Source={x:Static local:Loc.Instance}}"
+                                   FontSize="12" TextColor="Gray" />
+                            <Border Style="{StaticResource Tile}" IsVisible="{Binding CanScanReceiverQr}">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ScanReceiverQrCommand}" />
+                                </Border.GestureRecognizers>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" Padding="4,2">
+                                    <Label Text="📷" FontSize="26" VerticalOptions="Center" />
+                                    <Label Grid.Column="1" Text="{Binding [proxyScanReceiver], Source={x:Static local:Loc.Instance}}"
+                                           FontAttributes="Bold" FontSize="14" VerticalOptions="Center" />
+                                </Grid>
+                            </Border>
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [proxyReverseHost], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                <Entry Text="{Binding ReverseHost}" Placeholder="192.168.43.2" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [proxyReversePort], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                <Entry Text="{Binding ReversePortText}" Keyboard="Numeric" MaxLength="5" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding [proxyPairPass], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                    <Entry Text="{Binding PairPassword}" MaxLength="64" IsPassword="{Binding PairPasswordHidden}" />
+                                    <Button Grid.Column="1" Text="👁" FontSize="18" Padding="0" WidthRequest="44"
+                                            Style="{StaticResource QuietButton}" Command="{Binding ToggleShowPairPasswordCommand}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="14" IsVisible="{Binding ShowDirect}" IsEnabled="{Binding IsNotRunning}">
                             <VerticalStackLayout Spacing="6">
                                 <Label Text="{Binding [proxyPort], Source={x:Static local:Loc.Instance}}" FontSize="14" />
                                 <Entry Text="{Binding PortText}" Keyboard="Numeric" MaxLength="5" />
@@ -223,6 +259,91 @@
                     <Label Text="{Binding [pcIntro], Source={x:Static local:Loc.Instance}}"
                            FontSize="13" TextColor="Gray" />
 
+                    <local:Segmented Items="{Binding Client.KindItems}" SelectedIndex="{Binding Client.KindIndex}"
+                                     IsEnabled="{Binding Client.CanChangeKind}" />
+
+                    <!-- ================= receive reverse connection ================= -->
+                    <VerticalStackLayout Spacing="14" IsVisible="{Binding Client.ShowReceive}">
+                        <Label Text="{Binding [rvIntro], Source={x:Static local:Loc.Instance}}"
+                               FontSize="13" TextColor="Gray" />
+                        <Border Style="{StaticResource Card}">
+                            <VerticalStackLayout Spacing="10">
+                                <Button Text="{Binding Client.ReceiverToggleText}" BackgroundColor="{Binding Client.ReceiverToggleColor}"
+                                        TextColor="White" FontAttributes="Bold" Command="{Binding Client.ToggleReceiverCommand}" />
+                                <Label Text="{Binding Client.ReceiverError}" IsVisible="{Binding Client.HasReceiverError}"
+                                       TextColor="#EF4444" FontSize="13" />
+                                <Label Text="{Binding Client.ReceiverStatusText}" TextColor="{Binding Client.ReceiverStatusColor}"
+                                       IsVisible="{Binding Client.ReceiverRunning}" FontSize="13" FontAttributes="Bold" />
+                                <Label Text="{Binding Client.LocalProxyText}" IsVisible="{Binding Client.ReceiverRunning}" FontSize="13" />
+                                <Label Text="{Binding Client.ReceiverStatsText}" IsVisible="{Binding Client.ReceiverRunning}"
+                                       FontSize="12" TextColor="Gray" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Label Style="{StaticResource SectionLabel}"
+                               Text="{Binding [rvLinkAddress], Source={x:Static local:Loc.Instance}}" />
+                        <Border Style="{StaticResource Card}">
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="{Binding [noNetwork], Source={x:Static local:Loc.Instance}}"
+                                       IsVisible="{Binding Client.NoLinkAddresses}" FontSize="13" TextColor="Gray" />
+                                <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Client.LinkAddresses}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource Tile}" Padding="12,10">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer
+                                                        Command="{Binding Client.CopyLinkAddressCommand, Source={RelativeSource AncestorType={x:Type local:ProxyViewModel}}}"
+                                                        CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                    <Label Text="{Binding .}" FontSize="17" FontAttributes="Bold" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="⧉" FontSize="18" TextColor="Gray" VerticalOptions="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                                <Label IsVisible="{Binding Client.CopiedLink}" FontSize="12" TextColor="#22C55E" FontAttributes="Bold"
+                                       Text="{Binding [proxyCopied], Source={x:Static local:Loc.Instance}}" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Button Text="{Binding [showQr], Source={x:Static local:Loc.Instance}}"
+                                            Command="{Binding Client.ShowLinkQrCommand}" IsEnabled="{Binding Client.ReceiverRunning}" />
+                                    <Button Grid.Column="1" Text="↻" FontSize="20" Padding="0" WidthRequest="48"
+                                            Style="{StaticResource QuietButton}" Command="{Binding Client.RefreshLinkAddressesCommand}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <VerticalStackLayout Spacing="12" IsEnabled="{Binding Client.ReceiverNotEditable}">
+                                <VerticalStackLayout Spacing="6">
+                                    <Label Text="{Binding [rvLinkPort], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                    <Entry Text="{Binding Client.LinkPortText}" Keyboard="Numeric" MaxLength="5" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Spacing="6">
+                                    <Label Text="{Binding [rvLocalPort], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                    <Entry Text="{Binding Client.LocalPortText}" Keyboard="Numeric" MaxLength="5" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Spacing="6">
+                                    <Label Text="{Binding [proxyPairPass], Source={x:Static local:Loc.Instance}}" FontSize="14" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                        <Entry Text="{Binding Client.PairPassword}" MaxLength="64" IsPassword="{Binding Client.PairPasswordHidden}" />
+                                        <Button Grid.Column="1" Text="👁" FontSize="18" Padding="0" WidthRequest="44"
+                                                Style="{StaticResource QuietButton}" Command="{Binding Client.ToggleShowPairPasswordCommand}" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+                        <Button Text="{Binding [pcTest], Source={x:Static local:Loc.Instance}}"
+                                Command="{Binding Client.TestCommand}" IsEnabled="{Binding Client.IsNotBusy}"
+                                IsVisible="{Binding Client.ReceiverRunning}" />
+                        <ActivityIndicator IsRunning="{Binding Client.IsBusy}" IsVisible="{Binding Client.IsBusy}" />
+                        <Label Text="{Binding Client.StatusText}" TextColor="{Binding Client.StatusColor}"
+                               IsVisible="{Binding Client.HasStatus}" FontSize="13" />
+                    </VerticalStackLayout>
+
+                    <!-- ================= connect to a proxy ================= -->
+                    <VerticalStackLayout Spacing="14" IsVisible="{Binding Client.ShowConnect}">
                     <Border Style="{StaticResource Tile}" IsVisible="{Binding Client.CanScanQr}"
                             IsEnabled="{Binding Client.IsNotBusy}">
                         <Border.GestureRecognizers>
@@ -270,6 +391,8 @@
                                    IsVisible="{Binding Client.HasStatus}" FontSize="13" />
                         </VerticalStackLayout>
                     </Border>
+
+                    </VerticalStackLayout>
 
                     <Label Style="{StaticResource SectionLabel}"
                            Text="{Binding [pcUse], Source={x:Static local:Loc.Instance}}" />

@@ -367,7 +367,7 @@ public partial class MainViewModel : ObservableObject
         var text = IsLinked
             ? Loc.Instance[IsConnected ? "notifConnected" : "notifRetrying"]
             : proxy.NotificationText;
-        keepAlive.Update(IsLinked || proxy.IsRunning, text);
+        keepAlive.Update(IsLinked || proxy.IsActive, text);
     }
 
     public ProxyViewModel Proxy => proxy;
@@ -395,7 +395,7 @@ public partial class MainViewModel : ObservableObject
         {
             AppLog.Write("APP", "exit requested (removed from recent apps), disconnecting");
             Disconnect();
-            proxy.Stop();
+            proxy.StopAll();
         });
         this.qr = qr;
         this.discovery = discovery;
