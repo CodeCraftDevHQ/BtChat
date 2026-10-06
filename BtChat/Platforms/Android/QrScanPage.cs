@@ -64,7 +64,7 @@ public sealed class QrScanPage : ContentPage
         foreach (var barcode in e.BarcodeResults)
         {
             var text = string.IsNullOrEmpty(barcode.RawValue) ? barcode.DisplayValue : barcode.RawValue;
-            if (QrPayload.TryParse(text, out _) || ProxyQrPayload.TryParse(text, out _))
+            if (QrPayload.TryParse(text, out _) || ProxyQrPayload.TryParse(text, out _) || ReverseQrPayload.TryParse(text, out _))
             {
                 Finish(text);
                 return;
