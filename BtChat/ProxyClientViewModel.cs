@@ -123,6 +123,7 @@ public partial class ProxyClientViewModel : ObservableObject
         SetStatus(loc["pcTesting"], Colors.Gray);
         try
         {
+            tcp.LogNetworkState("proxy test");
             var result = await ProxyProbe.RunAsync(host, port, user, pass, CancellationToken.None);
             AppLog.Write(Tag, $"test {host}:{port} -> {result.Status} {result.LatencyMs} ms {result.Detail}");
             ShowResult(result, host, port);
@@ -315,7 +316,7 @@ public partial class ProxyClientViewModel : ObservableObject
         try
         {
             var probe = await ProxyProbe.RunAsync(host, port, user, pass, CancellationToken.None);
-            AppLog.Write(Tag, $"vpn pre-test {host}:{port} -> {probe.Status} {probe.Detail}");
+            AppLog.Write(Tag, $"pre-test {host}:{port} -> {probe.Status} {probe.Detail}");
             if (probe.Status != ProbeStatus.Ok)
             {
                 ShowResult(probe, host, port);
@@ -337,7 +338,7 @@ public partial class ProxyClientViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLog.Error(Tag, "vpn toggle failed", ex);
+            AppLog.Error(Tag, "toggle failed", ex);
             SetStatus(string.Format(loc["pcError"], ex.Message), Red);
         }
         finally

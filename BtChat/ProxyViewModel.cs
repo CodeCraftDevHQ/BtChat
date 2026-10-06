@@ -288,6 +288,7 @@ public partial class ProxyViewModel : ObservableObject
         }
 
         IsRunning = true;
+        tcp.LogNetworkState("proxy start");
         RefreshAddresses();
         Apply(server.GetSnapshot());
         RunningChanged?.Invoke();

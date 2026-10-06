@@ -5,7 +5,7 @@ namespace BtChat;
 
 public sealed class AndroidVpnTunnel : IVpnTunnel
 {
-    const string Tag = "VPN";
+    const string Tag = "TUN";
 
     public AndroidVpnTunnel()
     {

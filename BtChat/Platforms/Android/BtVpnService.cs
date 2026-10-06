@@ -13,7 +13,7 @@ public sealed record VpnConfig(string Host, int Port, string? User, string? Pass
 [IntentFilter(new[] { "android.net.VpnService" })]
 public class BtVpnService : VpnService
 {
-    const string Tag = "VPN";
+    const string Tag = "TUN";
     const string ChannelId = "btchat_vpn";
     const int NotificationId = 4712;
     public const string StopAction = "com.companyname.btchat.VPN_STOP";
@@ -81,7 +81,7 @@ public class BtVpnService : VpnService
                 }
                 catch (Exception ex)
                 {
-                    AppLog.Error(Tag, "cannot exclude BtChat from the vpn", ex);
+                    AppLog.Error(Tag, "cannot exclude BtChat from the tunnel", ex);
                 }
                 if (OperatingSystem.IsAndroidVersionAtLeast(33))
                 {
@@ -99,7 +99,7 @@ public class BtVpnService : VpnService
                 if (OperatingSystem.IsAndroidVersionAtLeast(29)) builder.SetMetered(false);
 
                 var pfd = builder.Establish();
-                if (pfd == null) throw new InvalidOperationException("the system refused to create the vpn interface");
+                if (pfd == null) throw new InvalidOperationException("the system refused to create the tunnel interface");
                 tun = pfd;
 
                 var options = new TunOptions
@@ -122,7 +122,7 @@ public class BtVpnService : VpnService
                 LastError = null;
                 created.Start();
                 ShowNotification(config);
-                AppLog.Write(Tag, $"vpn started via {config.Host}:{config.Port}");
+                AppLog.Write(Tag, $"started via {config.Host}:{config.Port}");
                 StartCompleted?.TrySetResult(null);
             }
             catch (Exception ex)
@@ -160,12 +160,12 @@ public class BtVpnService : VpnService
         {
         }
         if (Current == this) Current = null;
-        AppLog.Write(Tag, "vpn stopped");
+        AppLog.Write(Tag, "stopped");
     }
 
     public override void OnRevoke()
     {
-        AppLog.Write(Tag, "vpn revoked by the system");
+        AppLog.Write(Tag, "revoked by the system");
         StopTunnel(null);
         StopSelf();
         base.OnRevoke();

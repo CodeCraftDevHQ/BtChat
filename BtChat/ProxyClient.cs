@@ -76,6 +76,8 @@ public static class ProxyProbe
     {
         var watch = Stopwatch.StartNew();
         var stage = 0;   // 0 = opening the connection, 1 = SOCKS handshake, 2 = talking to the test page
+        void Log(string message) =>
+            AppLog.Write("ProxyClient", $"probe {host}:{port} -> {target} [{watch.ElapsedMilliseconds} ms, stage {stage}] {message}");
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -83,14 +85,17 @@ public static class ProxyProbe
             var token = cts.Token;
 
             using var client = new TcpClient { NoDelay = true };
+            Log("connecting");
             await client.ConnectAsync(host, port, token);
             stage = 1;
+            Log($"connected, local={client.Client.LocalEndPoint}");
             var s = client.GetStream();
 
             var useAuth = !string.IsNullOrEmpty(user);
             await s.WriteAsync(useAuth ? new byte[] { 0x05, 0x02, 0x00, 0x02 } : new byte[] { 0x05, 0x01, 0x00 }, token);
             var b = new byte[2];
             await ReadExactAsync(s, b, 2, token);
+            Log($"greeting reply {b[0]:X2} {b[1]:X2}");
             if (b[0] != 0x05) return new ProbeResult(ProbeStatus.NotAProxy);
             if (b[1] == 0xFF) return new ProbeResult(ProbeStatus.AuthFailed, 0, useAuth ? "rejected" : "required");
             if (b[1] == 0x02)
@@ -129,6 +134,7 @@ public static class ProxyProbe
 
             var head = new byte[4];
             await ReadExactAsync(s, head, 4, token);
+            Log($"connect reply code {head[1]}");
             if (head[0] != 0x05) return new ProbeResult(ProbeStatus.NotAProxy);
             if (head[1] != 0x00) return new ProbeResult(ProbeStatus.TargetRefused, 0, "code " + head[1]);
             int skip;
@@ -154,6 +160,7 @@ public static class ProxyProbe
                 got += n;
             }
             var text = Encoding.ASCII.GetString(buf, 0, got);
+            Log($"test page answer '{text.Replace("\r", " ").Replace("\n", " ")}'");
             if (text.StartsWith("HTTP/", StringComparison.Ordinal) && text.Length >= 12 &&
                 int.TryParse(text.AsSpan(9, 3), out var code))
             {
@@ -165,6 +172,7 @@ public static class ProxyProbe
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            Log("timed out");
             return stage >= 2 ? new ProbeResult(ProbeStatus.TargetRefused, 0, "timeout") : new ProbeResult(ProbeStatus.Timeout);
         }
         catch (OperationCanceledException)
@@ -173,10 +181,12 @@ public static class ProxyProbe
         }
         catch (SocketException ex) when (stage == 0)
         {
+            Log($"connect failed: {ex.SocketErrorCode}");
             return new ProbeResult(ProbeStatus.Unreachable, 0, ex.SocketErrorCode.ToString());
         }
         catch (Exception ex) when (ex is EndOfStreamException or IOException or SocketException)
         {
+            Log($"connection closed: {ex.GetType().Name}: {ex.Message}");
             return stage >= 2 ? new ProbeResult(ProbeStatus.TargetRefused, 0, "closed") : new ProbeResult(ProbeStatus.Rejected);
         }
         catch (Exception ex)

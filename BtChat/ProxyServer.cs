@@ -91,6 +91,9 @@ public sealed class ProxyServer : IDisposable
     CancellationTokenSource? cts;
     System.Threading.Timer? timer;
     bool running;
+    int logBudget;
+    long selfTestUntil;
+    HashSet<IPAddress> selfTestAddresses = new();
 
     // Guarded by statsLock.
     int activeConnections;
@@ -132,7 +135,9 @@ public sealed class ProxyServer : IDisposable
                 throw;
             }
 
+            AppLog.Write(Tag, $"listening on {l.LocalEndpoint}");
             options = o.Clone();
+            Interlocked.Exchange(ref logBudget, 0);
             lock (statsLock)
             {
                 clients.Clear();
@@ -149,6 +154,7 @@ public sealed class ProxyServer : IDisposable
             running = true;
             var token = cts.Token;
             _ = Task.Run(() => AcceptLoopAsync(l, token));
+            _ = Task.Run(() => SelfTestAsync(o.Port, token));
             timer = new System.Threading.Timer(OnTick, null, 1000, 1000);
             AppLog.Write(Tag, $"started on port {options.Port} (auth={(options.AuthRequired ? "on" : "off")}, localOnly={options.LocalNetworkOnly}, totalLimit={totalLimit}, perClientLimit={perClientLimit})");
         }
@@ -279,7 +285,62 @@ public sealed class ProxyServer : IDisposable
                 catch (OperationCanceledException) { break; }
                 continue;
             }
+            try
+            {
+                LogFew($"accepted {tcp.Client.RemoteEndPoint} on {tcp.Client.LocalEndPoint}");
+            }
+            catch
+            {
+            }
             _ = Task.Run(() => HandleConnectionAsync(tcp, ct));
+        }
+    }
+
+    void LogFew(string message)
+    {
+        if (Interlocked.Increment(ref logBudget) <= 120) AppLog.Write(Tag, message);
+    }
+
+    async Task SelfTestAsync(int port, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(700, ct);
+            var targets = new List<IPAddress> { IPAddress.Loopback };
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && !targets.Contains(ua.Address))
+                        targets.Add(ua.Address);
+            }
+            selfTestAddresses = new HashSet<IPAddress>(targets);
+            Interlocked.Exchange(ref selfTestUntil, Stopwatch.GetTimestamp() + Stopwatch.Frequency * 20);
+            foreach (var ip in targets)
+            {
+                var watch = Stopwatch.StartNew();
+                try
+                {
+                    using var client = new TcpClient();
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeout.CancelAfter(3000);
+                    await client.ConnectAsync(ip, port, timeout.Token);
+                    AppLog.Write(Tag, $"self-test {ip}:{port} ok in {watch.ElapsedMilliseconds} ms");
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    var code = ex is SocketException se ? se.SocketErrorCode.ToString() : ex.GetType().Name;
+                    AppLog.Write(Tag, $"self-test {ip}:{port} FAILED after {watch.ElapsedMilliseconds} ms: {code}");
+                }
+            }
+            Interlocked.Exchange(ref selfTestUntil, Stopwatch.GetTimestamp() + Stopwatch.Frequency);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(Tag, "self-test crashed", ex);
         }
     }
 
@@ -346,6 +407,13 @@ public sealed class ProxyServer : IDisposable
             if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
             addr = ip.ToString();
 
+            if (Stopwatch.GetTimestamp() < Interlocked.Read(ref selfTestUntil) &&
+                (IPAddress.IsLoopback(ip) || selfTestAddresses.Contains(ip)))
+            {
+                AppLog.Write(Tag, $"self-test connection accepted from {addr}");
+                return;
+            }
+
             if (options.LocalNetworkOnly && !IsLocalNetwork(ip))
             {
                 AppLog.Write(Tag, $"rejected {addr}: not a local network address");
@@ -368,11 +436,16 @@ public sealed class ProxyServer : IDisposable
                 hsCts.CancelAfter(HandshakeTimeout);
                 var first = new byte[1];
                 await ReadExactAsync(stream, first, 1, hsCts.Token);
+                LogFew($"{addr}: first byte 0x{first[0]:X2} ({(first[0] == 0x05 ? "SOCKS5" : "HTTP")})");
                 hs = first[0] == 0x05
                     ? await Socks5Async(stream, addr, hsCts.Token)
                     : await HttpAsync(stream, first[0], addr, hsCts.Token);
             }
-            if (hs == null) return;
+            if (hs == null)
+            {
+                LogFew($"{addr}: handshake refused");
+                return;
+            }
 
             target = hs.Target;
             AddSocket(cs!, target);
@@ -387,9 +460,12 @@ public sealed class ProxyServer : IDisposable
                 PumpAsync(clientSock, target, cs!, true, ct),
                 PumpAsync(target, clientSock, cs!, false, ct));
         }
-        catch (OperationCanceledException) { }
-        catch (EndOfStreamException) { }
-        catch (IOException ex) { AppLog.Verbose(Tag, $"{addr}: {ex.GetType().Name}: {ex.Message}"); }
+        catch (OperationCanceledException)
+        {
+            if (!ct.IsCancellationRequested) LogFew($"{addr}: timed out");
+        }
+        catch (EndOfStreamException) { LogFew($"{addr}: closed before the handshake finished"); }
+        catch (IOException ex) { LogFew($"{addr}: {ex.GetType().Name}: {ex.Message}"); }
         catch (SocketException ex) { AppLog.Verbose(Tag, $"{addr}: socket {ex.SocketErrorCode}"); }
         catch (ObjectDisposedException) { }
         catch (Exception ex) { AppLog.Error(Tag, $"connection from {addr} failed", ex); }
@@ -483,7 +559,7 @@ public sealed class ProxyServer : IDisposable
             return null;
         }
 
-        AppLog.Verbose(Tag, $"{addr}: SOCKS5 CONNECT {host}:{port}");
+        LogFew($"{addr}: SOCKS5 CONNECT {host}:{port}");
         Socket target;
         try
         {
@@ -497,7 +573,7 @@ public sealed class ProxyServer : IDisposable
         }
         catch (SocketException ex)
         {
-            AppLog.Verbose(Tag, $"{addr}: connect {host}:{port} failed: {ex.SocketErrorCode}");
+            LogFew($"{addr}: connect {host}:{port} failed: {ex.SocketErrorCode}");
             await Socks5ReplyAsync(s, MapSocksError(ex.SocketErrorCode), ct);
             return null;
         }

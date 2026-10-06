@@ -27,7 +27,7 @@ internal readonly record struct FlowKey(uint SrcIp, ushort SrcPort, uint DstIp, 
 
 public sealed class TunEngine : IDisposable
 {
-    const string Tag = "VPN";
+    const string Tag = "TUN";
 
     internal readonly TunOptions Options;
     readonly ITunIo io;
@@ -484,7 +484,7 @@ internal static class TcpFlags
 
 internal sealed class TcpFlow
 {
-    const string Tag = "VPN";
+    const string Tag = "TUN";
     const int WindowCap = 65535;
 
     sealed class Unacked(uint seq, byte[] data, bool fin)
