@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:BtChat"
              x:Class="BtChat.MainPage">
     <Grid FlowDirection="LeftToRight">
-        <Grid x:Name="MainArea" RowDefinitions="Auto,Auto,*,Auto" Padding="8" RowSpacing="6"
+        <Grid x:Name="MainArea" RowDefinitions="Auto,Auto,Auto,*,Auto" Padding="8" RowSpacing="6"
               FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
             <Border Grid.Row="0" Style="{StaticResource Card}" Padding="8,6">
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
@@ -33,7 +33,23 @@
                     </HorizontalStackLayout>
                 </Grid>
             </Border>
-            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0" IsVisible="{Binding HasPins}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding PinBarTapCommand}" />
+                    </Grid.GestureRecognizers>
+                    <BoxView WidthRequest="3" Margin="10,6,0,6" Color="{StaticResource AccentColor}" CornerRadius="2" />
+                    <VerticalStackLayout Grid.Column="1" Padding="10,6" Spacing="0" VerticalOptions="Center">
+                        <Label Text="{Binding PinTitle}" FontSize="12" FontAttributes="Bold"
+                               TextColor="{StaticResource AccentColor}" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding PinPreview}" FontSize="13" MaxLines="1" LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="2" Text="✕" FontSize="16" Padding="0" WidthRequest="40" HeightRequest="40"
+                            Style="{StaticResource QuietButton}" VerticalOptions="Center"
+                            Command="{Binding PinBarUnpinCommand}" />
+                </Grid>
+            </Border>
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="6">
                 <Label Text="{Binding TransferText}" IsVisible="{Binding HasTransfers}"
                        FontSize="12" TextColor="Gray" VerticalOptions="Center" />
                 <Button Grid.Column="1" Text="{Binding [clearHistory], Source={x:Static local:Loc.Instance}}"
@@ -41,7 +57,7 @@
                         HorizontalOptions="End" FontSize="12" TextColor="Gray" BackgroundColor="Transparent"
                         Padding="8,0" HeightRequest="32" MinimumHeightRequest="0" />
             </Grid>
-            <CollectionView x:Name="MessagesView" Grid.Row="2" ItemsSource="{Binding Messages}"
+            <CollectionView x:Name="MessagesView" Grid.Row="3" ItemsSource="{Binding Messages}"
                             FlowDirection="LeftToRight">
                 <CollectionView.EmptyView>
                     <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="10" Margin="24">
@@ -113,6 +129,7 @@
                                     <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
                                         <Label Text="{Binding [edited], Source={x:Static local:Loc.Instance}}" IsVisible="{Binding IsEdited}"
                                                FontSize="10" TextColor="Gray" VerticalOptions="Center" />
+                                        <Label Text="📌" IsVisible="{Binding IsPinned}" FontSize="10" VerticalOptions="Center" />
                                         <Label Text="{Binding TimeText}" FontSize="10" TextColor="Gray" VerticalOptions="Center" />
                                         <Button Text="⋮" FontSize="20" TextColor="Gray"
                                                 BackgroundColor="Transparent" Padding="0" CornerRadius="0"
@@ -129,7 +146,7 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-            <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,2,0,0">
+            <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,2,0,0">
                 <Button Text="📎" FontSize="22" Padding="0" WidthRequest="44" HeightRequest="44"
                         Style="{StaticResource QuietButton}" IsVisible="{Binding NotRecording}"
                         Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />

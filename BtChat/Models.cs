@@ -35,6 +35,20 @@ public class ChatMessage : ObservableObject
         get => isEdited;
         set => SetProperty(ref isEdited, value);
     }
+    // Pinned on this device only (not sent to the other side). PinnedAt orders the pins like Telegram does.
+    bool isPinned;
+    public bool IsPinned
+    {
+        get => isPinned;
+        private set => SetProperty(ref isPinned, value);
+    }
+    public DateTime PinnedAt { get; private set; }
+    public void SetPinned(bool pinned)
+    {
+        if (pinned == isPinned) return;
+        PinnedAt = pinned ? DateTime.UtcNow : default;
+        IsPinned = pinned;
+    }
     public string SenderName { get; init; } = "";
     public bool HasSender => SenderName.Length > 0;
     public bool IsFile { get; init; }
@@ -453,6 +467,11 @@ public class ChatMessage : ObservableObject
             MessageId = Guid.TryParse(s.MessageId, out var messageId) ? messageId : Guid.Empty,
             IsEdited = s.IsEdited
         };
+        if (s.IsPinned)
+        {
+            m.isPinned = true;
+            m.PinnedAt = s.PinnedAt ?? s.Time.ToUniversalTime();
+        }
         if (s.IsFile && s.FailKey != null)
         {
             m.failKey = s.FailKey;

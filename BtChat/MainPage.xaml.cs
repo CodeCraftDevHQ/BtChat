@@ -24,6 +24,7 @@ public partial class MainPage : ContentPage
         MediaButton.HoldUp += vm.MediaButtonUp;
         Drawer.TranslationX = vm.IsDrawerOpen ? 0 : ClosedOffset;
         vm.ScrollRequested += () => Dispatcher.Dispatch(ScrollToEnd);
+        vm.ScrollToMessageRequested += message => Dispatcher.Dispatch(() => ScrollToMessage(message));
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.IsDrawerOpen)) _ = AnimateDrawerAsync();
@@ -83,6 +84,12 @@ public partial class MainPage : ContentPage
         if (vm.IsWide) return;
         var target = vm.IsDrawerOpen ? 0 : ClosedOffset;
         await Drawer.TranslateToAsync(target, 0, 220, Easing.CubicOut);
+    }
+
+    void ScrollToMessage(ChatMessage message)
+    {
+        if (!vm.Messages.Contains(message)) return;
+        MessagesView.ScrollTo(message, position: ScrollToPosition.Center, animate: true);
     }
 
     void ScrollToEnd()

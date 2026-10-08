@@ -18,6 +18,8 @@ public sealed class StoredMessage
     public string? TransferKey { get; set; }
     public string? MessageId { get; set; }
     public bool IsEdited { get; set; }
+    public bool IsPinned { get; set; }
+    public DateTime? PinnedAt { get; set; }
 
     public static StoredMessage From(ChatMessage m) => new()
     {
@@ -34,7 +36,9 @@ public sealed class StoredMessage
         PartialBytes = m.ShowProgress ? m.LastDone : m.PartialBytes,
         TransferKey = m.TransferKey == Guid.Empty ? null : m.TransferKey.ToString("N"),
         MessageId = m.MessageId == Guid.Empty ? null : m.MessageId.ToString("N"),
-        IsEdited = m.IsEdited
+        IsEdited = m.IsEdited,
+        IsPinned = m.IsPinned,
+        PinnedAt = m.IsPinned ? m.PinnedAt : null
     };
 }
 

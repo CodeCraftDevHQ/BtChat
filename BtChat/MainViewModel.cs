@@ -42,6 +42,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<Conversation> Conversations { get; } = new();
     public ObservableCollection<ChatMessage> Messages => CurrentChat?.Messages ?? noMessages;
     public event Action? ScrollRequested;
+    public event Action<ChatMessage>? ScrollToMessageRequested;
 
     [ObservableProperty] Conversation? currentChat;
     [ObservableProperty] bool isDrawerOpen;
@@ -265,6 +266,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasMessages));
         OnPropertyChanged(nameof(CurrentTitle));
         OnPropertyChanged(nameof(CurrentInitial));
+        NotifyPins();
         NotifyComposer();
         ScrollRequested?.Invoke();
     }
@@ -301,6 +303,7 @@ public partial class MainViewModel : ObservableObject
             if (ReferenceEquals(chat, CurrentChat))
             {
                 OnPropertyChanged(nameof(HasMessages));
+                NotifyPins();
                 ScrollRequested?.Invoke();
             }
             NotifyTransfers();
@@ -1465,12 +1468,16 @@ public partial class MainViewModel : ObservableObject
                 if (message.IsReceivedFile) options.Add(loc["openFolder"]);
                 options.Add(loc["share"]);
             }
+            var pinLabel = loc[message.IsPinned ? "unpin" : "pin"];
+            options.Add(pinLabel);
             var deleteLabel = message.IsReceivedFile && !message.Failed ? loc["deleteFile"] : loc["deleteMessage"];
             options.Add(deleteLabel);
             var picked = await page.DisplayActionSheet(message.Text, loc["cancel"], null, options.ToArray());
             if (picked == null) return;
             if (picked == deleteLabel)
                 await DeleteMessageAsync(message, page);
+            else if (picked == pinLabel)
+                TogglePin(message);
             else if (picked == previewLabel)
                 await ShowMediaAsync(message);
             else if (picked == openLabel)
@@ -1481,13 +1488,16 @@ public partial class MainViewModel : ObservableObject
                 await SafeAsync("share file", () => files.ShareAsync(message.Location!, message.Text));
             return;
         }
-        var textOptions = new List<string> { loc["copyText"], loc["share"] };
+        var textPinLabel = loc[message.IsPinned ? "unpin" : "pin"];
+        var textOptions = new List<string> { loc["copyText"], loc["share"], textPinLabel };
         var canEdit = message.IsMine && message.MessageId != Guid.Empty;
         if (canEdit) textOptions.Add(loc["edit"]);
         textOptions.Add(loc["deleteMessage"]);
         var choice = await page.DisplayActionSheet(null, loc["cancel"], null, textOptions.ToArray());
         if (canEdit && choice == loc["edit"])
             await EditMessageAsync(message, page);
+        else if (choice == textPinLabel)
+            TogglePin(message);
         else if (choice == loc["copyText"])
             await Clipboard.Default.SetTextAsync(message.Text);
         else if (choice == loc["share"])
@@ -1497,6 +1507,95 @@ public partial class MainViewModel : ObservableObject
             ChatOf(message)?.Messages.Remove(message);
             SaveHistory();
         }
+    }
+
+    // ---- Pinned messages (local to this device, several per chat, shown in a bar above the messages)
+
+    List<ChatMessage> CurrentPins() => CurrentChat == null
+        ? new List<ChatMessage>()
+        : CurrentChat.Messages.Where(m => m.IsPinned).OrderBy(m => m.PinnedAt).ToList();
+
+    ChatMessage? ShownPin
+    {
+        get
+        {
+            var pins = CurrentPins();
+            if (pins.Count == 0) return null;
+            return pins[Math.Clamp(CurrentChat!.PinCursor, 0, pins.Count - 1)];
+        }
+    }
+
+    public bool HasPins => CurrentPins().Count > 0;
+
+    public string PinTitle
+    {
+        get
+        {
+            var pins = CurrentPins();
+            var title = Loc.Instance["pinnedMessage"];
+            if (pins.Count < 2) return title;
+            var index = Math.Clamp(CurrentChat!.PinCursor, 0, pins.Count - 1);
+            return $"{title} #{index + 1}";
+        }
+    }
+
+    public string PinPreview
+    {
+        get
+        {
+            var shown = ShownPin;
+            if (shown == null) return "";
+            var text = shown.IsFile ? shown.Display : shown.Text;
+            var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+            return line.Trim();
+        }
+    }
+
+    void NotifyPins()
+    {
+        OnPropertyChanged(nameof(HasPins));
+        OnPropertyChanged(nameof(PinTitle));
+        OnPropertyChanged(nameof(PinPreview));
+    }
+
+    void TogglePin(ChatMessage message)
+    {
+        var chat = ChatOf(message);
+        if (chat == null) return;
+        message.SetPinned(!message.IsPinned);
+        if (message.IsPinned)
+        {
+            // The newest pin is the one the bar shows first.
+            chat.PinCursor = chat.Messages.Count(m => m.IsPinned) - 1;
+        }
+        else
+        {
+            var count = chat.Messages.Count(m => m.IsPinned);
+            chat.PinCursor = Math.Clamp(chat.PinCursor, 0, Math.Max(0, count - 1));
+        }
+        SaveHistory();
+        if (ReferenceEquals(chat, CurrentChat)) NotifyPins();
+    }
+
+    // Tap on the bar: jump to the shown pinned message, then the bar moves on to the next older pin.
+    [RelayCommand]
+    void PinBarTap()
+    {
+        var pins = CurrentPins();
+        var chat = CurrentChat;
+        if (chat == null || pins.Count == 0) return;
+        var index = Math.Clamp(chat.PinCursor, 0, pins.Count - 1);
+        var target = pins[index];
+        chat.PinCursor = index == 0 ? pins.Count - 1 : index - 1;
+        NotifyPins();
+        ScrollToMessageRequested?.Invoke(target);
+    }
+
+    [RelayCommand]
+    void PinBarUnpin()
+    {
+        var shown = ShownPin;
+        if (shown != null) TogglePin(shown);
     }
 
     async Task EditMessageAsync(ChatMessage message, Page page)
@@ -1518,6 +1617,7 @@ public partial class MainViewModel : ObservableObject
             message.Text = text;
             message.IsEdited = true;
             SaveHistory();
+            NotifyPins();
         }
         catch (Exception ex)
         {
@@ -1535,6 +1635,7 @@ public partial class MainViewModel : ObservableObject
             message.Text = text;
             message.IsEdited = true;
             SaveHistory();
+            NotifyPins();
             return;
         }
     }
@@ -1563,6 +1664,7 @@ public partial class MainViewModel : ObservableObject
         NotifySearch();
         NotifyTransfers();
         NotifyComposer();
+        NotifyPins();
     }
 
     [RelayCommand]

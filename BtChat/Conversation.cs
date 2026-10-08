@@ -22,6 +22,9 @@ public sealed class Conversation : ObservableObject
     public string Id { get; }
     public ObservableCollection<ChatMessage> Messages { get; } = new();
 
+    // Index (in pin order) of the pinned message the top bar currently shows; not saved.
+    public int PinCursor { get; set; }
+
     public string PeerName
     {
         get => peerName;
