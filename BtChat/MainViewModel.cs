@@ -30,6 +30,8 @@ public partial class MainViewModel : ObservableObject
     readonly object gate = new();
     readonly SemaphoreSlim connectLock = new(1, 1);
     ChatSession? session;
+    // True while a new connection is agreeing on encryption (before the chat session exists).
+    bool negotiating;
     BtDevice? autoTarget;
     string statusKey = "idle";
     bool started;
@@ -167,6 +169,23 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SearchText));
         OnPropertyChanged(nameof(HasSearchText));
     }
+
+    // Encryption of messages and files: off by default; both devices have to agree when connecting.
+    [ObservableProperty] bool encryptionEnabled = Preferences.Default.Get("encrypt", false);
+    // True while the current connection is encrypted.
+    [ObservableProperty] bool isEncrypted;
+
+    partial void OnEncryptionEnabledChanged(bool value)
+    {
+        Preferences.Default.Set("encrypt", value);
+        AppLog.Write("UI", $"encryption = {value}");
+        // A connection that already runs keeps the mode it started with.
+        NotifySecurityHint();
+    }
+
+    void NotifySecurityHint() => OnPropertyChanged(nameof(EncryptionApplyHint));
+
+    public string EncryptionApplyHint => IsConnected ? Loc.Instance["encryptHintNext"] : "";
 
     [ObservableProperty] bool concurrentFiles = Preferences.Default.Get("concurrentFiles", true);
 
@@ -607,7 +626,7 @@ public partial class MainViewModel : ObservableObject
         {
             await Task.Delay(delay + Random.Shared.Next(0, 2000));
             var target = autoTarget;
-            if (target == null || session != null)
+            if (target == null || session != null || negotiating)
             {
                 delay = 3000;
                 continue;
@@ -636,7 +655,7 @@ public partial class MainViewModel : ObservableObject
         }
         try
         {
-            if (session != null)
+            if (session != null || negotiating)
             {
                 AppLog.Write("VM", "connect skipped, session already exists");
                 return;
@@ -650,21 +669,57 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    async Task RunSessionAsync(Stream stream, bool inbound, string name)
+    async Task RunSessionAsync(Stream rawStream, bool inbound, string name)
     {
+        lock (gate)
+        {
+            if (session != null || negotiating)
+            {
+                AppLog.Write("VM", $"DROPPING {name} stream because a session already exists");
+                rawStream.Dispose();
+                return;
+            }
+            negotiating = true;
+        }
+        Stream stream;
+        bool encrypted;
+        try
+        {
+            SetStatus("securing");
+            var result = await SecureLink.NegotiateAsync(rawStream, inbound, EncryptionEnabled, name, MakeSecurityPrompts());
+            if (result.Cancelled)
+            {
+                AppLog.Write("VM", $"{name} not started: {result.FailKey}");
+                if (result.CancelledLocally && !inbound)
+                {
+                    autoTarget = null;
+                    Preferences.Default.Remove("autoBt");
+                }
+                lock (gate) negotiating = false;
+                SetStatus(result.FailKey ?? "secFailed");
+                return;
+            }
+            stream = result.Stream;
+            encrypted = result.Encrypted;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("VM", $"{name} security setup failed", ex);
+            rawStream.Dispose();
+            lock (gate) negotiating = false;
+            SetStatus("secFailed");
+            return;
+        }
         ChatSession current;
         lock (gate)
         {
-            if (session != null)
-            {
-                AppLog.Write("VM", $"DROPPING {name} stream because a session already exists");
-                stream.Dispose();
-                return;
-            }
+            negotiating = false;
             current = new ChatSession(stream, files, name, resumes);
             session = current;
         }
-        AppLog.Write("VM", $"session started {name} inbound={inbound}");
+        IsEncrypted = encrypted;
+        NotifySecurityHint();
+        AppLog.Write("VM", $"session started {name} inbound={inbound} encrypted={encrypted}");
         if (inbound)
         {
             autoTarget = null;
@@ -723,6 +778,8 @@ public partial class MainViewModel : ObservableObject
             }
             FailQueuedSends();
             IsConnected = false;
+            IsEncrypted = false;
+            NotifySecurityHint();
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 if (ReferenceEquals(callSession, current)) EndCallLocal();
@@ -737,6 +794,55 @@ public partial class MainViewModel : ObservableObject
             SetStatus(autoTarget != null ? "retrying" : "idle");
         }
     }
+
+    // ---- Encryption questions (shown when the two devices have different encryption settings)
+
+    readonly Dictionary<string, DateTime> securityDeclined = new();
+
+    bool RecentlyDeclined(string peerId)
+    {
+        lock (securityDeclined)
+            return securityDeclined.TryGetValue(peerId, out var at) && DateTime.UtcNow - at < TimeSpan.FromMinutes(2);
+    }
+
+    void RememberDeclined(string peerId)
+    {
+        lock (securityDeclined) securityDeclined[peerId] = DateTime.UtcNow;
+    }
+
+    SecurityPrompts MakeSecurityPrompts() => new()
+    {
+        LocalOff = async peerId =>
+        {
+            // The same device keeps retrying after a "no": do not ask again for two minutes.
+            if (RecentlyDeclined(peerId)) return LocalChoice.Cancel;
+            var loc = Loc.Instance;
+            var picked = await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+                if (page == null) return null;
+                return await page.DisplayActionSheet(loc["secMismatchOff"], loc["cancel"], null, loc["secEnable"], loc["secContinuePlain"]);
+            });
+            if (picked == loc["secEnable"]) return LocalChoice.EnableEncryption;
+            if (picked == loc["secContinuePlain"]) return LocalChoice.ContinuePlain;
+            RememberDeclined(peerId);
+            return LocalChoice.Cancel;
+        },
+        LocalOnConfirmPlain = async peerId =>
+        {
+            if (RecentlyDeclined(peerId)) return false;
+            var loc = Loc.Instance;
+            var agreed = await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+                if (page == null) return false;
+                return await page.DisplayAlert(loc["secTitle"], loc["secMismatchOn"], loc["secContinuePlain"], loc["cancel"]);
+            });
+            if (!agreed) RememberDeclined(peerId);
+            return agreed;
+        },
+        EnableEncryption = () => MainThread.BeginInvokeOnMainThread(() => EncryptionEnabled = true)
+    };
 
     async Task LoadDevicesAsync()
     {
