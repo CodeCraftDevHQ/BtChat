@@ -14,6 +14,21 @@ public partial class SettingsPage : ContentPage
 
     async void OnCloseClicked(object? sender, EventArgs e) => await CloseAsync();
 
+    const string WindowsDownloadUrl = "https://github.com/CodeCraftDevHQ/BtChat";
+
+    async void OnWindowsDownloadClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            await Launcher.Default.OpenAsync(new Uri(WindowsDownloadUrl));
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("UI", "opening Windows download link failed", ex);
+            await DisplayAlert(Loc.Instance["setAbout"], Loc.Instance["openLinkFailed"], Loc.Instance["close"]);
+        }
+    }
+
     async void OnLogClicked(object? sender, EventArgs e)
     {
         await CloseAsync();

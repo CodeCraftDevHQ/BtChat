@@ -69,6 +69,17 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [setAbout], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Button Text="{Binding [winDownload], Source={x:Static local:Loc.Instance}}"
+                                Clicked="OnWindowsDownloadClicked" />
+                        <Label Text="{Binding [winDownloadHint], Source={x:Static local:Loc.Instance}}"
+                               FontSize="12" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <Label x:Name="VersionLabel" FontSize="12" TextColor="Gray" HorizontalOptions="Center" Margin="0,8,0,0" />
             </VerticalStackLayout>
         </ScrollView>
