@@ -265,6 +265,11 @@ public class ChatMessage : ObservableObject
     long lastDone;
     long partialBytes;
     long startTicks;
+    // Speed and time left: measured over samples of at least half a second and smoothed.
+    long uiTicks;
+    long speedTicks;
+    long speedDone;
+    double speedBytesPerSecond;
     long sizeBytes;
     double durationSeconds;
 
@@ -349,13 +354,20 @@ public class ChatMessage : ObservableObject
     public void Report(long done, long total)
     {
         lastDone = done;
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        UpdateSpeed(done, now);
         var key = total > 0 ? done * 100 / total : done / (256 * 1024);
-        if (key == lastKey) return;
+        // Refresh when the percentage moves, and at least once a second so slow transfers keep their speed/time current.
+        var dueByTime = System.Diagnostics.Stopwatch.GetElapsedTime(uiTicks, now).TotalSeconds >= 1;
+        if (key == lastKey && !dueByTime) return;
         lastKey = key;
+        uiTicks = now;
         var p = total > 0 ? Math.Min(1.0, (double)done / total) : 0;
         var text = total > 0
             ? $"{(int)(p * 100)}%  ({FormatSize(done)} / {FormatSize(total)})"
             : FormatSize(done);
+        var rate = SpeedText(done, total);
+        if (rate.Length > 0) text += "\n" + rate;
         OnUi(() =>
         {
             Progress = p;
@@ -364,9 +376,57 @@ public class ChatMessage : ObservableObject
         });
     }
 
+    void UpdateSpeed(long done, long now)
+    {
+        if (speedTicks == 0 || done < speedDone)
+        {
+            speedTicks = now;
+            speedDone = done;
+            speedBytesPerSecond = 0;
+            return;
+        }
+        var seconds = System.Diagnostics.Stopwatch.GetElapsedTime(speedTicks, now).TotalSeconds;
+        if (seconds < 0.5) return;
+        var instant = (done - speedDone) / seconds;
+        speedBytesPerSecond = speedBytesPerSecond <= 0 ? instant : speedBytesPerSecond * 0.7 + instant * 0.3;
+        speedTicks = now;
+        speedDone = done;
+    }
+
+    void ResetSpeed()
+    {
+        uiTicks = 0;
+        speedTicks = 0;
+        speedDone = 0;
+        speedBytesPerSecond = 0;
+    }
+
+    // "2.4 MB/s · 12 s left" (only the speed when the total size is unknown).
+    string SpeedText(long done, long total)
+    {
+        if (speedBytesPerSecond < 1) return "";
+        var text = FormatSize((long)speedBytesPerSecond) + "/s";
+        if (total > done)
+        {
+            var left = (total - done) / speedBytesPerSecond;
+            if (left < 24 * 3600) text += " · " + string.Format(Loc.Instance["timeLeft"], FormatEta(left));
+        }
+        return text;
+    }
+
+    static string FormatEta(double seconds)
+    {
+        var loc = Loc.Instance;
+        var t = (int)Math.Ceiling(seconds);
+        if (t < 60) return $"{t} {loc["secShort"]}";
+        if (t < 3600) return $"{t / 60}:{t % 60:D2} {loc["minShort"]}";
+        return $"{t / 3600}:{t % 3600 / 60:D2} {loc["hourShort"]}";
+    }
+
     // Waiting for its turn (sender) or for the sender to start it (receiver).
     public void SetQueued(string key = "queued") => OnUi(() =>
     {
+        ResetSpeed();
         lastKey = -1;
         Progress = 0;
         StatusText = Loc.Instance[key];
@@ -416,6 +476,7 @@ public class ChatMessage : ObservableObject
 
     public void MarkStart(long size)
     {
+        ResetSpeed();
         startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         if (size > 0) sizeBytes = size;
     }

@@ -251,6 +251,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["lockBioTitle"] = ("باز کردن BtChat", "Unlock BtChat"),
         ["lockUsePin"] = ("استفاده از رمز", "Use PIN"),
         ["newMessage"] = ("پیام جدید", "New message"),
+        ["timeLeft"] = ("{0} مانده", "{0} left"),
+        ["hourShort"] = ("ساعت", "h"),
         ["pin"] = ("📌 پین کردن", "📌 Pin"),
         ["unpin"] = ("برداشتن پین", "Unpin"),
         ["pinnedMessage"] = ("پیام پین‌شده", "Pinned message"),
