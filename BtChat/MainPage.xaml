@@ -20,7 +20,7 @@
                         <Label Text="{Binding CurrentTitle}" FontAttributes="Bold" FontSize="17" LineBreakMode="TailTruncation" />
                         <HorizontalStackLayout Spacing="5">
                             <Label Text="●" FontSize="10" TextColor="{Binding ConnectionDot}" VerticalOptions="Center" />
-                            <Label Text="🔒" FontSize="11" IsVisible="{Binding IsEncrypted}" VerticalOptions="Center" />
+                            <Label Text="{Binding SecurityBadge}" FontSize="11" IsVisible="{Binding IsEncrypted}" VerticalOptions="Center" />
                             <Label Text="{Binding Status}" FontSize="12" TextColor="Gray" LineBreakMode="TailTruncation" VerticalOptions="Center" />
                         </HorizontalStackLayout>
  </VerticalStackLayout>

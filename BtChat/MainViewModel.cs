@@ -174,6 +174,22 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] bool encryptionEnabled = Preferences.Default.Get("encrypt", false);
     // True while the current connection is encrypted.
     [ObservableProperty] bool isEncrypted;
+    // True when the other device's identity key was checked (matched the QR code or a key saved earlier).
+    [ObservableProperty] bool isVerified;
+    // Check the other device's identity: QR fingerprint and a warning when a known device's key changes. Off by default.
+    [ObservableProperty] bool verifyPeers = Preferences.Default.Get("verifyPeers", false);
+
+    public string SecurityBadge => !IsEncrypted ? "" : IsVerified ? "🔒✓" : "🔒";
+    public string LocalFingerprintText => DeviceIdentity.LocalFingerprint;
+
+    partial void OnIsEncryptedChanged(bool value) => OnPropertyChanged(nameof(SecurityBadge));
+    partial void OnIsVerifiedChanged(bool value) => OnPropertyChanged(nameof(SecurityBadge));
+
+    partial void OnVerifyPeersChanged(bool value)
+    {
+        Preferences.Default.Set("verifyPeers", value);
+        AppLog.Write("UI", $"verify peers = {value}");
+    }
 
     partial void OnEncryptionEnabledChanged(bool value)
     {
@@ -669,7 +685,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    async Task RunSessionAsync(Stream rawStream, bool inbound, string name)
+    async Task RunSessionAsync(Stream rawStream, bool inbound, string name, string? expectedFingerprint = null)
     {
         lock (gate)
         {
@@ -683,6 +699,7 @@ public partial class MainViewModel : ObservableObject
         }
         Stream stream;
         bool encrypted;
+        var peerVerified = false;
         try
         {
             SetStatus("securing");
@@ -699,8 +716,18 @@ public partial class MainViewModel : ObservableObject
                 SetStatus(result.FailKey ?? "secFailed");
                 return;
             }
+            var (failKey, verified) = await VerifyPeerAsync(result, expectedFingerprint);
+            if (failKey != null)
+            {
+                AppLog.Write("VM", $"{name} not started: {failKey}");
+                result.Stream.Dispose();
+                lock (gate) negotiating = false;
+                SetStatus(failKey);
+                return;
+            }
             stream = result.Stream;
             encrypted = result.Encrypted;
+            peerVerified = verified;
         }
         catch (Exception ex)
         {
@@ -718,8 +745,9 @@ public partial class MainViewModel : ObservableObject
             session = current;
         }
         IsEncrypted = encrypted;
+        IsVerified = encrypted && peerVerified;
         NotifySecurityHint();
-        AppLog.Write("VM", $"session started {name} inbound={inbound} encrypted={encrypted}");
+        AppLog.Write("VM", $"session started {name} inbound={inbound} encrypted={encrypted} verified={IsVerified}");
         if (inbound)
         {
             autoTarget = null;
@@ -779,6 +807,7 @@ public partial class MainViewModel : ObservableObject
             FailQueuedSends();
             IsConnected = false;
             IsEncrypted = false;
+            IsVerified = false;
             NotifySecurityHint();
             MainThread.BeginInvokeOnMainThread(() =>
             {
@@ -843,6 +872,53 @@ public partial class MainViewModel : ObservableObject
         },
         EnableEncryption = () => MainThread.BeginInvokeOnMainThread(() => EncryptionEnabled = true)
     };
+
+    // Checks who is on the other end (only when "verify devices" is on and the link is encrypted).
+    // Returns a localization key when the connection must not start, and whether the identity was confirmed.
+    async Task<(string? FailKey, bool Verified)> VerifyPeerAsync(SecurityResult result, string? expectedFingerprint)
+    {
+        if (!VerifyPeers) return (null, false);
+        // The QR code of the other device carried its key fingerprint: it has to match exactly.
+        if (expectedFingerprint != null)
+        {
+            if (!result.Encrypted) return ("secNotVerified", false);
+            if (!PeerTrust.Same(result.PeerFingerprint, expectedFingerprint))
+            {
+                AppLog.Write("SEC", "peer key does not match the QR code");
+                return ("secWrongDevice", false);
+            }
+            PeerTrust.Set(result.PeerId, result.PeerFingerprint!);
+            return (null, true);
+        }
+        if (!result.Encrypted || result.PeerFingerprint == null) return (null, false);
+        var known = PeerTrust.Get(result.PeerId);
+        if (known == null)
+        {
+            // First time we see this device: remember its key (trust on first use).
+            PeerTrust.Set(result.PeerId, result.PeerFingerprint);
+            return (null, false);
+        }
+        if (PeerTrust.Same(known, result.PeerFingerprint)) return (null, true);
+
+        AppLog.Write("SEC", "peer key changed since the last connection");
+        if (RecentlyDeclined(result.PeerId)) return ("secKeyRejected", false);
+        var loc = Loc.Instance;
+        var chat = Conversations.FirstOrDefault(c => c.Id == result.PeerId);
+        var who = chat?.Name ?? loc["unknownDevice"];
+        var trust = await MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page == null) return false;
+            return await page.DisplayAlert(loc["secKeyChangedTitle"], string.Format(loc["secKeyChanged"], who), loc["secTrust"], loc["cancel"]);
+        });
+        if (!trust)
+        {
+            RememberDeclined(result.PeerId);
+            return ("secKeyRejected", false);
+        }
+        PeerTrust.Set(result.PeerId, result.PeerFingerprint);
+        return (null, false);
+    }
 
     async Task LoadDevicesAsync()
     {
@@ -917,7 +993,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     // Tries each address in order; the first one that answers wins.
-    async Task ConnectViaTcpAsync(IReadOnlyList<string> candidates, int timeoutSeconds = 8)
+    async Task ConnectViaTcpAsync(IReadOnlyList<string> candidates, int timeoutSeconds = 8, string? expectedFingerprint = null)
     {
         if (!await connectLock.WaitAsync(0))
         {
@@ -936,7 +1012,7 @@ public partial class MainViewModel : ObservableObject
                     Host = address;
                     Preferences.Default.Set("host", address);
                     var stream = await tcp.ConnectAsync(address, CancellationToken.None, timeoutSeconds);
-                    _ = RunSessionAsync(stream, false, "tcp-out");
+                    _ = RunSessionAsync(stream, false, "tcp-out", expectedFingerprint);
                     return;
                 }
                 catch (Exception ex)
@@ -1013,7 +1089,9 @@ public partial class MainViewModel : ObservableObject
             await page.DisplayAlert(loc["showQr"], loc["noNetwork"], "OK");
             return;
         }
-        var payload = QrPayload.Build(addresses, DiscoveryService.DeviceName());
+        // The fingerprint goes into the QR code only when both encryption and device verification are on.
+        var fingerprint = EncryptionEnabled && VerifyPeers ? PeerTrust.Compact(DeviceIdentity.LocalFingerprint) : null;
+        var payload = QrPayload.Build(addresses, DiscoveryService.DeviceName(), fingerprint);
         AppLog.Write("QR", $"showing qr, payload={payload}");
         try
         {
@@ -1072,7 +1150,7 @@ public partial class MainViewModel : ObservableObject
             SetStatus("selfIp");
             return;
         }
-        await ConnectViaTcpAsync(candidates, 4);
+        await ConnectViaTcpAsync(candidates, 4, VerifyPeers ? info.Fingerprint : null);
     }
 
     [RelayCommand]

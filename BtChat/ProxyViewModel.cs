@@ -93,6 +93,16 @@ public partial class ProxyViewModel : ObservableObject
     partial void OnPairPasswordChanged(string value) => Preferences.Default.Set("proxyRvPass", value ?? "");
     partial void OnShowPairPasswordChanged(bool value) => OnPropertyChanged(nameof(PairPasswordHidden));
 
+    // Advanced settings (port, password, limits) stay folded until the user opens them.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AdvancedArrow))]
+    bool advancedOpen;
+
+    public string AdvancedArrow => AdvancedOpen ? "▴" : "▾";
+
+    [RelayCommand]
+    void ToggleAdvanced() => AdvancedOpen = !AdvancedOpen;
+
     // 0 = this device shares its internet (server), 1 = this device uses another device's proxy (client).
     [ObservableProperty] int modeIndex = Preferences.Default.Get("proxyMode", 0) == 1 ? 1 : 0;
 

@@ -11,6 +11,24 @@ namespace BtChat;
 public partial class ProxyClientViewModel : ObservableObject
 {
     const string Tag = "ProxyClient";
+
+    // Manual connection and the receiver's port/password options stay folded until the user opens them.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ManualArrow))]
+    bool manualOpen;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReceiveOptionsArrow))]
+    bool receiveOptionsOpen;
+
+    public string ManualArrow => ManualOpen ? "▴" : "▾";
+    public string ReceiveOptionsArrow => ReceiveOptionsOpen ? "▴" : "▾";
+
+    [RelayCommand]
+    void ToggleManual() => ManualOpen = !ManualOpen;
+
+    [RelayCommand]
+    void ToggleReceiveOptions() => ReceiveOptionsOpen = !ReceiveOptionsOpen;
     static readonly Color Green = Color.FromArgb("#22C55E");
     static readonly Color Red = Color.FromArgb("#EF4444");
 
