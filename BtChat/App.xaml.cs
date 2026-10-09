@@ -15,7 +15,12 @@ public partial class App : Application
         var window = new Window(services.GetRequiredService<MainPage>()) { Title = "BtChat" };
         // App lock: remember when the app went away and ask for the PIN again after the chosen time.
         window.Deactivated += (_, _) => AppLock.OnBackground();
-        window.Activated += (_, _) => AppLock.OnForeground();
+        window.Activated += (_, _) =>
+        {
+            AppLock.OnForeground();
+            // The quick guide shows once, on the very first start.
+            _ = GuidePage.ShowFirstRunAsync();
+        };
         return window;
     }
 }

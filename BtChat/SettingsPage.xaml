@@ -175,6 +175,8 @@
                        Text="{Binding [setAbout], Source={x:Static local:Loc.Instance}}" />
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="8">
+                        <Button Text="{Binding [guideOpen], Source={x:Static local:Loc.Instance}}"
+                                Clicked="OnGuideClicked" />
                         <Button Text="{Binding [winDownload], Source={x:Static local:Loc.Instance}}"
                                 Clicked="OnWindowsDownloadClicked" />
                         <Label Text="{Binding [winDownloadHint], Source={x:Static local:Loc.Instance}}"

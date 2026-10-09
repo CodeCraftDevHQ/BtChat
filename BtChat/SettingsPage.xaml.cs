@@ -210,6 +210,18 @@ public partial class SettingsPage : ContentPage
         }
     }
 
+    async void OnGuideClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            await GuidePage.ShowAsync(this);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("GUIDE", "opening the guide failed", ex);
+        }
+    }
+
     async void OnLogClicked(object? sender, EventArgs e)
     {
         await CloseAsync();
