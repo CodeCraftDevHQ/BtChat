@@ -135,6 +135,10 @@
                         <Label Text="{Binding [myFingerprint], Source={x:Static local:Loc.Instance}}"
                                FontSize="12" TextColor="Gray" Margin="0,6,0,0" />
                         <Label Text="{Binding LocalFingerprintText}" FontSize="12" />
+                        <Button Text="{Binding [forgetKeys], Source={x:Static local:Loc.Instance}}"
+                                Clicked="OnForgetKeysClicked" Margin="0,8,0,0" />
+                        <Label Text="{Binding [forgetKeysHint], Source={x:Static local:Loc.Instance}}"
+                               FontSize="12" TextColor="Gray" />
                     </VerticalStackLayout>
                 </Border>
 

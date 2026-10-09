@@ -54,6 +54,31 @@ public static class PeerTrust
         }
     }
 
+    public static int Count
+    {
+        get
+        {
+            lock (gate) return Load().Count;
+        }
+    }
+
+    // Forgets every saved key: the next connection with each device is treated as a first meeting again.
+    public static void Clear()
+    {
+        lock (gate)
+        {
+            known = new Dictionary<string, string>();
+            try
+            {
+                if (File.Exists(FilePath)) File.Delete(FilePath);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("SEC", "deleting known peers failed", ex);
+            }
+        }
+    }
+
     // Fingerprints are shown in groups of four ("A1B2 C3D4 ..."); compare them without spaces and case.
     public static bool Same(string? a, string? b) =>
         a != null && b != null && string.Equals(Compact(a), Compact(b), StringComparison.OrdinalIgnoreCase);

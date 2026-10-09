@@ -210,6 +210,22 @@ public partial class SettingsPage : ContentPage
         }
     }
 
+    async void OnForgetKeysClicked(object? sender, EventArgs e)
+    {
+        var loc = Loc.Instance;
+        var count = PeerTrust.Count;
+        if (count == 0)
+        {
+            await DisplayAlert(loc["forgetKeys"], loc["forgetKeysNone"], loc["close"]);
+            return;
+        }
+        var sure = await DisplayAlert(loc["forgetKeys"], string.Format(loc["forgetKeysAsk"], count), loc["forgetAction"], loc["cancel"]);
+        if (!sure) return;
+        PeerTrust.Clear();
+        AppLog.Write("SEC", $"saved keys forgotten ({count})");
+        await DisplayAlert(loc["forgetKeys"], loc["forgetKeysDone"], loc["close"]);
+    }
+
     async void OnGuideClicked(object? sender, EventArgs e)
     {
         try
