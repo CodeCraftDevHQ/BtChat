@@ -9,7 +9,10 @@ public enum PermissionKind
     Microphone,
     CameraCapture,
     CallMicrophone,
-    CallCamera
+    CallCamera,
+    // Only shown in Settings > Permissions (nothing is asked at run time):
+    Network,
+    Background
 }
 
 public interface IPermissionGate

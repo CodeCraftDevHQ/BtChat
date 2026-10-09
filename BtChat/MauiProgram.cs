@@ -18,10 +18,12 @@ public static class MauiProgram
 #endif
 #if ANDROID
         builder.Services.AddSingleton<IPermissionGate, AndroidPermissionGate>();
+        builder.Services.AddSingleton<IPermissionCenter, AndroidPermissionCenter>();
         builder.Services.AddSingleton<IBluetoothTransport, AndroidBluetoothTransport>();
         builder.Services.AddSingleton<IReceivedFileStore, AndroidReceivedFileStore>();
 #elif WINDOWS
         builder.Services.AddSingleton<IPermissionGate, DefaultPermissionGate>();
+        builder.Services.AddSingleton<IPermissionCenter, DefaultPermissionCenter>();
         builder.Services.AddSingleton<IBluetoothTransport, WindowsBluetoothTransport>();
         builder.Services.AddSingleton<IReceivedFileStore, WindowsReceivedFileStore>();
 #endif

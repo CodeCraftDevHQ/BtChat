@@ -10,6 +10,15 @@
 *.userosscache
 *.sln.docstates
 
+
+# Inno Setup output executable
+*.exe
+BtChat-Setup-1.0.0.exe
+
+# Output folders
+[O|o]ut/
+[O|o]utput/
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
