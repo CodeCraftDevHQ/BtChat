@@ -27,6 +27,7 @@ public sealed class ChatSession : IDisposable
     const byte FrameCallEnd = 23;    //                              hang up (also cancels a ringing call)
     const byte FrameCallVideo = 25;  // [quarter turns][jpeg]; empty = the camera was turned off
     const byte FrameCallAudio = 24;  // [mu-law 16 kHz mono, 40 ms]
+    const byte FrameTextReply = 18; // [message id 16][reply-to id 16][sender len u8][sender][preview len u16][preview][text]
     const byte FrameTextEdit = 17;  // [message id 16][new text]     the sender changed the text of an earlier message
 
     // type(1) + length(4) + file id(4)
@@ -79,6 +80,28 @@ public sealed class ChatSession : IDisposable
         AppLog.Write("SESSION", $"{name} text tx chars={text.Length}");
         return WriteFrameAsync(FrameTextId, null, WithMessageId(messageId, text), ct);
     }
+
+    // A text message that answers an earlier message: carries the id plus a short quote so the other
+    // device can show the quote even when it no longer has (or never had) the original.
+    public Task SendTextReplyAsync(Guid messageId, string text, Guid replyToId, string replySender, string replyPreview, CancellationToken ct = default)
+    {
+        AppLog.Write("SESSION", $"{name} text reply tx chars={text.Length}");
+        var sender = Encoding.UTF8.GetBytes(Clip(replySender, 60));
+        var preview = Encoding.UTF8.GetBytes(Clip(replyPreview, 160));
+        var textBytes = Encoding.UTF8.GetBytes(text);
+        var payload = new byte[16 + 16 + 1 + sender.Length + 2 + preview.Length + textBytes.Length];
+        messageId.TryWriteBytes(payload.AsSpan(0, 16));
+        replyToId.TryWriteBytes(payload.AsSpan(16, 16));
+        payload[32] = (byte)sender.Length;
+        sender.CopyTo(payload, 33);
+        var at = 33 + sender.Length;
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(at), (ushort)preview.Length);
+        preview.CopyTo(payload, at + 2);
+        textBytes.CopyTo(payload, at + 2 + preview.Length);
+        return WriteFrameAsync(FrameTextReply, null, payload, ct);
+    }
+
+    static string Clip(string value, int maxChars) => value.Length <= maxChars ? value : value[..maxChars];
 
     public Task SendTextEditAsync(Guid messageId, string text, CancellationToken ct = default)
     {
@@ -398,6 +421,29 @@ public sealed class ChatSession : IDisposable
                         {
                             MessageId = ReadKey(payload),
                             Text = Encoding.UTF8.GetString(payload.Span[16..]),
+                            SenderName = PeerName ?? ""
+                        });
+                        break;
+                    }
+                    case FrameTextReply:
+                    {
+                        if (payload.Length < 35) break;
+                        var span = payload.Span;
+                        int senderLength = span[32];
+                        if (payload.Length < 35 + senderLength) break;
+                        var replySender = Encoding.UTF8.GetString(span.Slice(33, senderLength));
+                        var at = 33 + senderLength;
+                        int previewLength = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(span[at..]);
+                        if (payload.Length < at + 2 + previewLength) break;
+                        var replyPreview = Encoding.UTF8.GetString(span.Slice(at + 2, previewLength));
+                        AppLog.Write("SESSION", $"{name} text reply rx bytes={length}");
+                        MessageReceived?.Invoke(new ChatMessage
+                        {
+                            MessageId = new Guid(span[..16]),
+                            ReplyToId = new Guid(span.Slice(16, 16)),
+                            ReplySender = replySender,
+                            ReplyPreview = replyPreview,
+                            Text = Encoding.UTF8.GetString(span[(at + 2 + previewLength)..]),
                             SenderName = PeerName ?? ""
                         });
                         break;

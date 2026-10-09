@@ -20,6 +20,9 @@ public sealed class StoredMessage
     public bool IsEdited { get; set; }
     public bool IsPinned { get; set; }
     public DateTime? PinnedAt { get; set; }
+    public string? ReplyToId { get; set; }
+    public string? ReplySender { get; set; }
+    public string? ReplyPreview { get; set; }
 
     public static StoredMessage From(ChatMessage m) => new()
     {
@@ -38,7 +41,10 @@ public sealed class StoredMessage
         MessageId = m.MessageId == Guid.Empty ? null : m.MessageId.ToString("N"),
         IsEdited = m.IsEdited,
         IsPinned = m.IsPinned,
-        PinnedAt = m.IsPinned ? m.PinnedAt : null
+        PinnedAt = m.IsPinned ? m.PinnedAt : null,
+        ReplyToId = m.HasReply && m.ReplyToId != Guid.Empty ? m.ReplyToId.ToString("N") : null,
+        ReplySender = m.HasReply ? m.ReplySender : null,
+        ReplyPreview = m.HasReply ? m.ReplyPreview : null
     };
 }
 

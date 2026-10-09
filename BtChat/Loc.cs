@@ -193,6 +193,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["secKeyChanged"] = ("کلید امنیتی «{0}» با دفعهٔ قبل فرق دارد. ممکن است برنامه روی آن دستگاه دوباره نصب شده باشد، یا کس دیگری خودش را جای آن جا زده باشد. اگر مطمئن نیستی لغو کن. به کلید جدید اعتماد شود؟", "The security key of \"{0}\" is different from last time. The app may have been reinstalled there, or someone else may be pretending to be that device. Cancel if you are not sure. Trust the new key?"),
         ["secTrust"] = ("اعتماد و ادامه", "Trust and continue"),
         ["proxyAdvanced"] = ("تنظیمات پیشرفته", "Advanced settings"),
+        ["reply"] = ("↩ پاسخ", "↩ Reply"),
+        ["replyTo"] = ("پاسخ به {0}", "Reply to {0}"),
         ["pin"] = ("📌 پین کردن", "📌 Pin"),
         ["unpin"] = ("برداشتن پین", "Unpin"),
         ["pinnedMessage"] = ("پیام پین‌شده", "Pinned message"),

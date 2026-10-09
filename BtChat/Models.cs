@@ -29,6 +29,11 @@ public class ChatMessage : ObservableObject
     }
     public bool IsMine { get; init; }
     public Guid MessageId { get; set; }
+    // Set when this message answers another one: the id of the original and a short quote of it.
+    public Guid ReplyToId { get; set; }
+    public string ReplySender { get; set; } = "";
+    public string ReplyPreview { get; set; } = "";
+    public bool HasReply => ReplyPreview.Length > 0;
     bool isEdited;
     public bool IsEdited
     {
@@ -465,7 +470,10 @@ public class ChatMessage : ObservableObject
             partialBytes = s.PartialBytes,
             TransferKey = Guid.TryParse(s.TransferKey, out var key) ? key : Guid.Empty,
             MessageId = Guid.TryParse(s.MessageId, out var messageId) ? messageId : Guid.Empty,
-            IsEdited = s.IsEdited
+            IsEdited = s.IsEdited,
+            ReplyToId = Guid.TryParse(s.ReplyToId, out var replyId) ? replyId : Guid.Empty,
+            ReplySender = s.ReplySender ?? "",
+            ReplyPreview = s.ReplyPreview ?? ""
         };
         if (s.IsPinned)
         {

@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:BtChat"
              x:Class="BtChat.MainPage">
     <Grid FlowDirection="LeftToRight">
-        <Grid x:Name="MainArea" RowDefinitions="Auto,Auto,Auto,*,Auto" Padding="8" RowSpacing="6"
+        <Grid x:Name="MainArea" RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" Padding="8" RowSpacing="6"
               FlowDirection="{Binding Flow, Source={x:Static local:Loc.Instance}}">
             <Border Grid.Row="0" Style="{StaticResource Card}" Padding="8,6">
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
@@ -82,6 +82,23 @@
                             <VerticalStackLayout Spacing="2">
                                     <Label Text="{Binding SenderName}" IsVisible="{Binding HasSender}"
                                            FontSize="11" FontAttributes="Bold" TextColor="#1B3FCF" />
+                                    <Border IsVisible="{Binding HasReply}" Padding="8,4" Margin="0,2" Stroke="Transparent"
+                                            StrokeShape="RoundRectangle 8" BackgroundColor="#14000000">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding ReplyJumpCommand, Source={RelativeSource AncestorType={x:Type local:MainViewModel}}}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="3,*" ColumnSpacing="8">
+                                            <BoxView Color="#1B3FCF" CornerRadius="2" />
+                                            <VerticalStackLayout Grid.Column="1" Spacing="0">
+                                                <Label Text="{Binding ReplySender}" FontSize="11" FontAttributes="Bold"
+                                                       TextColor="#1B3FCF" MaxLines="1" LineBreakMode="TailTruncation" />
+                                                <Label Text="{Binding ReplyPreview}" FontSize="12" TextColor="#444444"
+                                                       MaxLines="2" LineBreakMode="TailTruncation" />
+                                            </VerticalStackLayout>
+                                        </Grid>
+                                    </Border>
                                     <Label Text="{Binding Display}" TextColor="Black" IsVisible="{Binding ShowName}" />
                                     <Grid IsVisible="{Binding ShowAudioPlayer}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" WidthRequest="230">
                                         <Button Text="{Binding AudioGlyph}" FontSize="18" Padding="0"
@@ -147,7 +164,20 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-            <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,2,0,0">
+            <Border Grid.Row="4" Style="{StaticResource Card}" Padding="0" IsVisible="{Binding HasReplyTarget}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <BoxView WidthRequest="3" Margin="10,6,0,6" Color="{StaticResource AccentColor}" CornerRadius="2" />
+                    <VerticalStackLayout Grid.Column="1" Padding="10,6" Spacing="0" VerticalOptions="Center">
+                        <Label Text="{Binding ReplyBarTitle}" FontSize="12" FontAttributes="Bold"
+                               TextColor="{StaticResource AccentColor}" LineBreakMode="TailTruncation" MaxLines="1" />
+                        <Label Text="{Binding ReplyBarPreview}" FontSize="13" MaxLines="1" LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="2" Text="✕" FontSize="16" Padding="0" WidthRequest="40" HeightRequest="40"
+                            Style="{StaticResource QuietButton}" VerticalOptions="Center"
+                            Command="{Binding CancelReplyCommand}" />
+                </Grid>
+            </Border>
+            <Grid Grid.Row="5" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" Margin="0,2,0,0">
                 <Button Text="📎" FontSize="22" Padding="0" WidthRequest="44" HeightRequest="44"
                         Style="{StaticResource QuietButton}" IsVisible="{Binding NotRecording}"
                         Command="{Binding AttachCommand}" IsEnabled="{Binding CanSend}" />

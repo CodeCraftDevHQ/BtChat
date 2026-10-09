@@ -36,6 +36,7 @@ public partial class MainPage : ContentPage
         Drawer.TranslationX = vm.IsDrawerOpen ? 0 : ClosedOffset;
         vm.ScrollRequested += () => Dispatcher.Dispatch(ScrollToEnd);
         vm.ScrollToMessageRequested += message => Dispatcher.Dispatch(() => ScrollToMessage(message));
+        vm.FocusDraftRequested += () => Dispatcher.Dispatch(() => DraftEditor.Focus());
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.IsDrawerOpen)) _ = AnimateDrawerAsync();

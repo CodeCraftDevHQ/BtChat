@@ -45,6 +45,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ChatMessage> Messages => CurrentChat?.Messages ?? noMessages;
     public event Action? ScrollRequested;
     public event Action<ChatMessage>? ScrollToMessageRequested;
+    public event Action? FocusDraftRequested;
 
     [ObservableProperty] Conversation? currentChat;
     [ObservableProperty] bool isDrawerOpen;
@@ -302,6 +303,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CurrentTitle));
         OnPropertyChanged(nameof(CurrentInitial));
         NotifyPins();
+        ReplyTarget = null;
         NotifyComposer();
         ScrollRequested?.Invoke();
     }
@@ -339,6 +341,7 @@ public partial class MainViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(HasMessages));
                 NotifyPins();
+                if (ReplyTarget != null && CurrentChat != null && !CurrentChat.Messages.Contains(ReplyTarget)) ReplyTarget = null;
                 ScrollRequested?.Invoke();
             }
             NotifyTransfers();
@@ -1174,12 +1177,31 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var target = TargetChat();
+            var replying = ReplyTarget;
+            ReplyTarget = null;
+            var first = true;
             // One frame is at most 1 MB, so a huge paste goes out as several messages (cut at line breaks).
             foreach (var part in SplitLongText(text))
             {
                 var messageId = Guid.NewGuid();
-                await s.SendTextAsync(messageId, part);
-                AddMessage(target, new ChatMessage { MessageId = messageId, Text = part, IsMine = true, SenderName = LocalDevice.Name });
+                if (first && replying != null)
+                {
+                    var replyId = ReplyKeyOf(replying);
+                    var replySender = ReplySenderOf(replying);
+                    var replyPreview = ReplyPreviewOf(replying);
+                    await s.SendTextReplyAsync(messageId, part, replyId, replySender, replyPreview);
+                    AddMessage(target, new ChatMessage
+                    {
+                        MessageId = messageId, Text = part, IsMine = true, SenderName = LocalDevice.Name,
+                        ReplyToId = replyId, ReplySender = replySender, ReplyPreview = replyPreview
+                    });
+                }
+                else
+                {
+                    await s.SendTextAsync(messageId, part);
+                    AddMessage(target, new ChatMessage { MessageId = messageId, Text = part, IsMine = true, SenderName = LocalDevice.Name });
+                }
+                first = false;
             }
         }
         catch (Exception ex)
@@ -1672,6 +1694,8 @@ public partial class MainViewModel : ObservableObject
                 if (message.IsReceivedFile) options.Add(loc["openFolder"]);
                 options.Add(loc["share"]);
             }
+            var replyLabel = loc["reply"];
+            options.Add(replyLabel);
             var pinLabel = loc[message.IsPinned ? "unpin" : "pin"];
             options.Add(pinLabel);
             var deleteLabel = message.IsReceivedFile && !message.Failed ? loc["deleteFile"] : loc["deleteMessage"];
@@ -1680,6 +1704,8 @@ public partial class MainViewModel : ObservableObject
             if (picked == null) return;
             if (picked == deleteLabel)
                 await DeleteMessageAsync(message, page);
+            else if (picked == replyLabel)
+                StartReply(message);
             else if (picked == pinLabel)
                 TogglePin(message);
             else if (picked == previewLabel)
@@ -1693,13 +1719,16 @@ public partial class MainViewModel : ObservableObject
             return;
         }
         var textPinLabel = loc[message.IsPinned ? "unpin" : "pin"];
-        var textOptions = new List<string> { loc["copyText"], loc["share"], textPinLabel };
+        var textReplyLabel = loc["reply"];
+        var textOptions = new List<string> { textReplyLabel, loc["copyText"], loc["share"], textPinLabel };
         var canEdit = message.IsMine && message.MessageId != Guid.Empty;
         if (canEdit) textOptions.Add(loc["edit"]);
         textOptions.Add(loc["deleteMessage"]);
         var choice = await page.DisplayActionSheet(null, loc["cancel"], null, textOptions.ToArray());
         if (canEdit && choice == loc["edit"])
             await EditMessageAsync(message, page);
+        else if (choice == textReplyLabel)
+            StartReply(message);
         else if (choice == textPinLabel)
             TogglePin(message);
         else if (choice == loc["copyText"])
@@ -1711,6 +1740,49 @@ public partial class MainViewModel : ObservableObject
             ChatOf(message)?.Messages.Remove(message);
             SaveHistory();
         }
+    }
+
+    // ---- Reply to a message
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReplyTarget))]
+    [NotifyPropertyChangedFor(nameof(ReplyBarTitle))]
+    [NotifyPropertyChangedFor(nameof(ReplyBarPreview))]
+    ChatMessage? replyTarget;
+
+    public bool HasReplyTarget => ReplyTarget != null;
+    public string ReplyBarTitle => ReplyTarget == null ? "" : string.Format(Loc.Instance["replyTo"], ReplySenderOf(ReplyTarget));
+    public string ReplyBarPreview => ReplyTarget == null ? "" : ReplyPreviewOf(ReplyTarget);
+
+    // Text messages are found by their message id; files by their transfer key (the same on both devices).
+    static Guid ReplyKeyOf(ChatMessage m) => m.MessageId != Guid.Empty ? m.MessageId : m.TransferKey;
+
+    static string ReplySenderOf(ChatMessage m) => m.IsMine ? LocalDevice.Name : m.SenderName;
+
+    static string ReplyPreviewOf(ChatMessage m)
+    {
+        var text = m.IsFile ? m.Display : m.Text;
+        var line = text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        return line.Trim();
+    }
+
+    void StartReply(ChatMessage message)
+    {
+        ReplyTarget = message;
+        FocusDraftRequested?.Invoke();
+    }
+
+    [RelayCommand]
+    void CancelReply() => ReplyTarget = null;
+
+    // Tap on the quote inside a bubble: jump to the original message (if this device still has it).
+    [RelayCommand]
+    void ReplyJump(ChatMessage? message)
+    {
+        if (message == null || message.ReplyToId == Guid.Empty || CurrentChat == null) return;
+        var original = CurrentChat.Messages.FirstOrDefault(m =>
+            m.MessageId == message.ReplyToId || (m.IsFile && m.TransferKey == message.ReplyToId));
+        if (original != null) ScrollToMessageRequested?.Invoke(original);
     }
 
     // ---- Pinned messages (local to this device, several per chat, shown in a bar above the messages)
