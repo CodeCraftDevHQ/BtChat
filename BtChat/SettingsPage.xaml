@@ -86,6 +86,34 @@
                 </Border>
 
                 <Label Style="{StaticResource SectionLabel}"
+                       Text="{Binding [setLock], Source={x:Static local:Loc.Instance}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Label Text="{Binding [lockEnable], Source={x:Static local:Loc.Instance}}"
+                                   FontSize="14" VerticalOptions="Center" />
+                            <Switch x:Name="LockSwitch" Grid.Column="1" Toggled="OnLockToggled" />
+                        </Grid>
+                        <Label Text="{Binding [lockHint], Source={x:Static local:Loc.Instance}}"
+                               FontSize="12" TextColor="Gray" />
+                        <VerticalStackLayout x:Name="LockOptions" Spacing="8" IsVisible="False">
+                            <Label Text="{Binding [lockDelayLabel], Source={x:Static local:Loc.Instance}}"
+                                   FontSize="12" TextColor="Gray" />
+                            <Picker x:Name="LockDelayPicker" SelectedIndexChanged="OnLockDelayChanged" />
+                            <Grid x:Name="LockBioRow" ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="False">
+                                <Label Text="{Binding [lockBio], Source={x:Static local:Loc.Instance}}"
+                                       FontSize="14" VerticalOptions="Center" />
+                                <Switch x:Name="LockBioSwitch" Grid.Column="1" Toggled="OnLockBioToggled" />
+                            </Grid>
+                            <Button Text="{Binding [lockChangePin], Source={x:Static local:Loc.Instance}}"
+                                    Clicked="OnLockChangePinClicked" />
+                            <Button Text="{Binding [lockNow], Source={x:Static local:Loc.Instance}}"
+                                    Clicked="OnLockNowClicked" />
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Style="{StaticResource SectionLabel}"
                        Text="{Binding [setSecurity], Source={x:Static local:Loc.Instance}}" />
                 <Border Style="{StaticResource Card}">
                     <VerticalStackLayout Spacing="4">

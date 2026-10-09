@@ -35,6 +35,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ICallAudio, AndroidCallAudio>();
         builder.Services.AddSingleton<ICallAlert, AndroidCallAlert>();
         builder.Services.AddSingleton<IMessageAlert, AndroidMessageAlert>();
+        builder.Services.AddSingleton<IBiometricAuth, AndroidBiometricAuth>();
         builder.Services.AddSingleton<ICallVideo, AndroidCallVideo>();
         builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
         builder.Services.AddSingleton<IFileSource, AndroidFileSource>();
@@ -44,6 +45,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ICallAudio, NoCallAudio>();
         builder.Services.AddSingleton<ICallAlert, NoCallAlert>();
         builder.Services.AddSingleton<IMessageAlert, NoMessageAlert>();
+        builder.Services.AddSingleton<IBiometricAuth, NoBiometricAuth>();
         builder.Services.AddSingleton<ICallVideo, NoCallVideo>();
 #if WINDOWS
         builder.Services.AddSingleton<IAudioPlayer, WindowsAudioPlayer>();

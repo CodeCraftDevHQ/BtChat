@@ -186,6 +186,12 @@ public partial class MainViewModel : ObservableObject
     void NotifyIncoming(Conversation chat, ChatMessage message)
     {
         if (!MessageNotifications || message.IsMine) return;
+        // With the app lock on, the lock screen must not leak who wrote or what: show a plain notice.
+        if (AppLock.Enabled)
+        {
+            messageAlert.Show("locked", "BtChat", Loc.Instance["newMessage"]);
+            return;
+        }
         var text = message.IsFile ? "📎 " + message.Display : message.Text;
         if (text.Length > 200) text = text[..200] + "…";
         messageAlert.Show(chat.Id, chat.Name, text);

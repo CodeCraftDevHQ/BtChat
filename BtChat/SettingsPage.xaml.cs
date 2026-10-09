@@ -13,7 +13,108 @@ public partial class SettingsPage : ContentPage
         InitializeComponent();
         this.vm = vm;
         BindingContext = vm;
+        foreach (var seconds in AppLock.DelayChoices) LockDelayPicker.Items.Add(Loc.Instance["lockD" + seconds]);
+        UpdateLockUi();
         VersionLabel.Text = $"BtChat · {Loc.Instance["version"]} {AppInfo.Current.VersionString}";
+    }
+
+    // ---- App lock
+
+    bool updatingLockUi;
+
+    void UpdateLockUi()
+    {
+        updatingLockUi = true;
+        try
+        {
+            var enabled = AppLock.Enabled;
+            LockSwitch.IsToggled = enabled;
+            LockOptions.IsVisible = enabled;
+            var index = Array.IndexOf(AppLock.DelayChoices, AppLock.DelaySeconds);
+            LockDelayPicker.SelectedIndex = index >= 0 ? index : Array.IndexOf(AppLock.DelayChoices, AppLock.DefaultDelaySeconds);
+            LockBioRow.IsVisible = AppLock.BiometricAvailable;
+            LockBioSwitch.IsToggled = AppLock.BiometricEnabled;
+        }
+        finally
+        {
+            updatingLockUi = false;
+        }
+    }
+
+    async void OnLockToggled(object? sender, ToggledEventArgs e)
+    {
+        if (updatingLockUi || e.Value == AppLock.Enabled) return;
+        try
+        {
+            if (e.Value)
+            {
+                if (await AppLock.SetupPinAsync(this)) AppLock.Enable();
+            }
+            else if (await AppLock.ConfirmPinAsync(this, Loc.Instance["lockTurnOffTitle"]))
+            {
+                AppLock.Disable();
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("LOCK", "changing the app lock failed", ex);
+        }
+        UpdateLockUi();
+    }
+
+    void OnLockDelayChanged(object? sender, EventArgs e)
+    {
+        if (updatingLockUi || LockDelayPicker.SelectedIndex < 0) return;
+        AppLock.DelaySeconds = AppLock.DelayChoices[LockDelayPicker.SelectedIndex];
+    }
+
+    async void OnLockBioToggled(object? sender, ToggledEventArgs e)
+    {
+        if (updatingLockUi || e.Value == AppLock.BiometricEnabled) return;
+        try
+        {
+            if (e.Value)
+            {
+                // Check once that it really works before relying on it to unlock the app.
+                var biometric = IPlatformApplication.Current?.Services.GetService<IBiometricAuth>();
+                var ok = biometric != null && await biometric.AuthenticateAsync(Loc.Instance["lockBioTitle"], Loc.Instance["cancel"]);
+                AppLock.BiometricEnabled = ok;
+            }
+            else
+            {
+                AppLock.BiometricEnabled = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("LOCK", "changing fingerprint unlock failed", ex);
+        }
+        UpdateLockUi();
+    }
+
+    async void OnLockChangePinClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (await AppLock.ConfirmPinAsync(this, Loc.Instance["lockTurnOffTitle"]))
+                await AppLock.SetupPinAsync(this);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("LOCK", "changing the PIN failed", ex);
+        }
+    }
+
+    async void OnLockNowClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            await AppLock.LockNowAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("LOCK", "locking now failed", ex);
+        }
     }
 
     protected override void OnAppearing()
