@@ -171,6 +171,26 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSearchText));
     }
 
+    readonly IMessageAlert messageAlert;
+
+    // Notification for a new message or file while the app is not on screen.
+    [ObservableProperty] bool messageNotifications = Preferences.Default.Get("notifyMessages", true);
+
+    partial void OnMessageNotificationsChanged(bool value)
+    {
+        Preferences.Default.Set("notifyMessages", value);
+        AppLog.Write("UI", $"message notifications = {value}");
+        if (!value) messageAlert.ClearAll();
+    }
+
+    void NotifyIncoming(Conversation chat, ChatMessage message)
+    {
+        if (!MessageNotifications || message.IsMine) return;
+        var text = message.IsFile ? "📎 " + message.Display : message.Text;
+        if (text.Length > 200) text = text[..200] + "…";
+        messageAlert.Show(chat.Id, chat.Name, text);
+    }
+
     // Encryption of messages and files: off by default; both devices have to agree when connecting.
     [ObservableProperty] bool encryptionEnabled = Preferences.Default.Get("encrypt", false);
     // True while the current connection is encrypted.
@@ -421,8 +441,9 @@ public partial class MainViewModel : ObservableObject
         await SafeAsync("open proxy", () => page.Navigation.PushModalAsync(new ProxyPage(proxy)));
     }
 
-    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice, ICallVideo callVideoEngine, ProxyViewModel proxy)
+    public MainViewModel(IBluetoothTransport transport, TcpTransport tcp, IReceivedFileStore files, IQrScanner qr, DiscoveryService discovery, IKeepAlive keepAlive, IFileSource fileSource, IPermissionGate permissions, IVoiceRecorder recorder, IAudioPlayer audioPlayer, ICallAudio callAudioEngine, ICallAlert callAlertDevice, ICallVideo callVideoEngine, ProxyViewModel proxy, IMessageAlert messageAlertDevice)
     {
+        messageAlert = messageAlertDevice;
         this.proxy = proxy;
         proxy.RunningChanged += UpdateKeepAlive;
         InitCalls(callAudioEngine, callAlertDevice, callVideoEngine);
@@ -1578,6 +1599,14 @@ public partial class MainViewModel : ObservableObject
         };
         chat.Messages.Add(message);
         if (!message.IsMine && !ReferenceEquals(chat, CurrentChat)) chat.Unread++;
+        if (!message.IsMine)
+        {
+            // A file is announced when it has arrived, a text right away.
+            if (message.IsFile)
+                message.Finished += () => { if (!message.Failed) NotifyIncoming(chat, message); };
+            else
+                NotifyIncoming(chat, message);
+        }
         // Newest activity first, but the connected device stays on top.
         var top = linkedChat != null && !ReferenceEquals(chat, linkedChat) ? 1 : 0;
         var index = Conversations.IndexOf(chat);
@@ -1995,6 +2024,31 @@ public partial class MainViewModel : ObservableObject
     }
 
     public bool CanOpenBatterySettings => keepAlive.CanOpenBatterySettings;
+
+    // ---- Battery guide (Settings): shows whether the phone restricts the app and the steps to fix it.
+    public bool IsBatteryUnrestricted => keepAlive.IsBatteryUnrestricted;
+    public string BatteryStatusText => Loc.Instance[IsBatteryUnrestricted ? "batteryStatusOk" : "batteryStatusLimited"];
+    public Color BatteryStatusColor => IsBatteryUnrestricted ? Color.FromArgb("#22C55E") : Color.FromArgb("#F59E0B");
+    public bool BatteryNeedsFix => !IsBatteryUnrestricted;
+
+    public string BatteryBrandGuide => keepAlive.DeviceBrand switch
+    {
+        "xiaomi" or "redmi" or "poco" => Loc.Instance["batteryBrandXiaomi"],
+        "samsung" => Loc.Instance["batteryBrandSamsung"],
+        "huawei" or "honor" => Loc.Instance["batteryBrandHuawei"],
+        "oppo" or "realme" or "oneplus" or "vivo" => Loc.Instance["batteryBrandOppo"],
+        _ => ""
+    };
+
+    public bool HasBatteryBrandGuide => BatteryBrandGuide.Length > 0;
+
+    public void RefreshBatteryStatus()
+    {
+        OnPropertyChanged(nameof(IsBatteryUnrestricted));
+        OnPropertyChanged(nameof(BatteryStatusText));
+        OnPropertyChanged(nameof(BatteryStatusColor));
+        OnPropertyChanged(nameof(BatteryNeedsFix));
+    }
 
     [RelayCommand]
     async Task BatterySettingsAsync()

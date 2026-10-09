@@ -48,6 +48,7 @@ namespace BtChat
         {
             base.OnResume();
             InForeground = true;
+            AndroidMessageAlert.ClearShown();
         }
 
         protected override void OnPause()

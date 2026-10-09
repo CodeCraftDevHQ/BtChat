@@ -20,6 +20,7 @@ public partial class SettingsPage : ContentPage
     {
         base.OnAppearing();
         _ = RefreshPermissionsAsync();
+        vm.RefreshBatteryStatus();
         // Coming back from the system settings: show what the user changed there.
         if (Window != null) Window.Activated += OnWindowActivated;
     }
@@ -30,7 +31,11 @@ public partial class SettingsPage : ContentPage
         if (Window != null) Window.Activated -= OnWindowActivated;
     }
 
-    void OnWindowActivated(object? sender, EventArgs e) => _ = RefreshPermissionsAsync();
+    void OnWindowActivated(object? sender, EventArgs e)
+    {
+        _ = RefreshPermissionsAsync();
+        vm.RefreshBatteryStatus();
+    }
 
     async Task RefreshPermissionsAsync()
     {

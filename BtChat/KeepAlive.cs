@@ -10,6 +10,10 @@ public interface IKeepAlive
     // While a call runs the service also declares the microphone, so Android keeps the mic alive in the background.
     void SetInCall(bool inCall, bool video = false);
     bool CanOpenBatterySettings { get; }
+    // True when the system does not restrict this app's battery use in the background.
+    bool IsBatteryUnrestricted { get; }
+    // Phone maker in lower case (e.g. "xiaomi"), used to show the matching extra steps.
+    string DeviceBrand { get; }
     Task OpenBatterySettingsAsync();
 }
 
@@ -23,6 +27,8 @@ public sealed class NoKeepAlive : IKeepAlive
     }
 
     public bool CanOpenBatterySettings => false;
+    public bool IsBatteryUnrestricted => true;
+    public string DeviceBrand => "";
     public Task OpenBatterySettingsAsync() => Task.CompletedTask;
     public Task EnsurePermissionAsync() => Task.CompletedTask;
     public void Update(bool active, string text)

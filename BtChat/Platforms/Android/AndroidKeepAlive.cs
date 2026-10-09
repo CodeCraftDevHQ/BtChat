@@ -26,6 +26,26 @@ public sealed class AndroidKeepAlive : IKeepAlive
 
     public bool CanOpenBatterySettings => true;
 
+    public bool IsBatteryUnrestricted
+    {
+        get
+        {
+            try
+            {
+                var context = Android.App.Application.Context;
+                return context.GetSystemService(Context.PowerService) is PowerManager power
+                    && power.IsIgnoringBatteryOptimizations(context.PackageName!);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error("KEEPALIVE", "reading battery state failed", ex);
+                return false;
+            }
+        }
+    }
+
+    public string DeviceBrand => (Build.Manufacturer ?? "").ToLowerInvariant();
+
     // Opens the "don't restrict this app's battery use" screen; falls back to simpler screens if the phone has none.
     public Task OpenBatterySettingsAsync()
     {
