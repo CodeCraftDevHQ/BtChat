@@ -19,6 +19,17 @@ public partial class MainPage : ContentPage
         {
             if (e.PropertyName == nameof(MainViewModel.CallMenuOpen)) MainThread.BeginInvokeOnMainThread(AnimateCallMenu);
         };
+#if WINDOWS
+        // Enter sends, Shift+Enter makes a new line (like Telegram Desktop); on phones Enter is a new line.
+        DraftEditor.HandlerChanged += (_, _) =>
+        {
+            if (DraftEditor.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.TextBox box)
+            {
+                box.PreviewKeyDown -= OnDraftKeyDown;
+                box.PreviewKeyDown += OnDraftKeyDown;
+            }
+        };
+#endif
         MediaButton.HoldDown += vm.MediaButtonDown;
         MediaButton.HoldMoved += vm.MediaButtonMoved;
         MediaButton.HoldUp += vm.MediaButtonUp;
@@ -37,6 +48,19 @@ public partial class MainPage : ContentPage
             await vm.InitAsync();
         };
     }
+
+#if WINDOWS
+    void OnDraftKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+        var shift = Microsoft.UI.Input.InputKeyboardSource
+            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (shift) return;
+        e.Handled = true;
+        if (vm.SendCommand.CanExecute(null)) vm.SendCommand.Execute(null);
+    }
+#endif
 
     void OnAudioDragStarted(object? sender, EventArgs e)
     {

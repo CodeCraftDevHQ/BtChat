@@ -1167,20 +1167,40 @@ public partial class MainViewModel : ObservableObject
     async Task SendAsync()
     {
         var s = session;
-        var text = Draft.Trim();
+        // Windows text boxes use \r (or \r\n) for line breaks; keep one kind so every device shows the same lines.
+        var text = Draft.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
         if (s == null || text.Length == 0 || !CanSend) return;
         Draft = "";
         try
         {
-            var messageId = Guid.NewGuid();
-            await s.SendTextAsync(messageId, text);
-            AddMessage(TargetChat(), new ChatMessage { MessageId = messageId, Text = text, IsMine = true, SenderName = LocalDevice.Name });
+            var target = TargetChat();
+            // One frame is at most 1 MB, so a huge paste goes out as several messages (cut at line breaks).
+            foreach (var part in SplitLongText(text))
+            {
+                var messageId = Guid.NewGuid();
+                await s.SendTextAsync(messageId, part);
+                AddMessage(target, new ChatMessage { MessageId = messageId, Text = part, IsMine = true, SenderName = LocalDevice.Name });
+            }
         }
         catch (Exception ex)
         {
             AppLog.Error("VM", "send text failed", ex);
             SetStatus("failed");
         }
+    }
+
+    const int MaxMessageChars = 100_000;
+
+    static IEnumerable<string> SplitLongText(string text)
+    {
+        while (text.Length > MaxMessageChars)
+        {
+            var cut = text.LastIndexOf('\n', MaxMessageChars - 1, MaxMessageChars / 2);
+            if (cut <= 0) cut = MaxMessageChars;
+            yield return text[..cut].TrimEnd();
+            text = text[cut..].TrimStart('\n');
+        }
+        if (text.Length > 0) yield return text;
     }
 
     sealed class PendingSend
