@@ -905,6 +905,22 @@ public partial class MainViewModel : ObservableObject
         EnableEncryption = () => MainThread.BeginInvokeOnMainThread(() => EncryptionEnabled = true)
     };
 
+    // Warns that the other device could not be verified and asks whether to continue anyway.
+    async Task<bool> AskContinueUnverifiedAsync(string peerId, string askKey, string failKey)
+    {
+        if (RecentlyDeclined(peerId)) return false;
+        var loc = Loc.Instance;
+        var goOn = await MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page == null) return false;
+            return await page.DisplayAlert(loc["secVerifyTitle"], loc[askKey], loc["secContinue"], loc["cancel"]);
+        });
+        AppLog.Write("SEC", $"{failKey}: user chose {(goOn ? "to continue" : "to cancel")}");
+        if (!goOn) RememberDeclined(peerId);
+        return goOn;
+    }
+
     // Checks who is on the other end (only when "verify devices" is on and the link is encrypted).
     // Returns a localization key when the connection must not start, and whether the identity was confirmed.
     async Task<(string? FailKey, bool Verified)> VerifyPeerAsync(SecurityResult result, string? expectedFingerprint)
@@ -913,11 +929,16 @@ public partial class MainViewModel : ObservableObject
         // The QR code of the other device carried its key fingerprint: it has to match exactly.
         if (expectedFingerprint != null)
         {
-            if (!result.Encrypted) return ("secNotVerified", false);
+            if (!result.Encrypted)
+            {
+                // Without encryption the QR code can not be checked: tell the user and let them decide.
+                return await AskContinueUnverifiedAsync(result.PeerId, "secNotVerifiedAsk", "secNotVerified") ? (null, false) : ("secNotVerified", false);
+            }
             if (!PeerTrust.Same(result.PeerFingerprint, expectedFingerprint))
             {
                 AppLog.Write("SEC", "peer key does not match the QR code");
-                return ("secWrongDevice", false);
+                // Not the device from the QR code: warn strongly, but the user may still go on. The key is not saved.
+                return await AskContinueUnverifiedAsync(result.PeerId, "secWrongDeviceAsk", "secWrongDevice") ? (null, false) : ("secWrongDevice", false);
             }
             PeerTrust.Set(result.PeerId, result.PeerFingerprint!);
             return (null, true);
