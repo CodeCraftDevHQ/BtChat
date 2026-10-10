@@ -551,6 +551,8 @@ public partial class MainViewModel : ObservableObject
     {
         if (started) return;
         started = true;
+        // First start: the language is chosen on the first slide of the guide; wait for it before asking for permissions.
+        await GuidePage.WaitForFirstRunAsync();
         await AskFirstLanguageAsync();
         CrashReport.ReportPrevious();
         AppLog.Write("APP", $"start {DeviceInfo.Current.Platform} {DeviceInfo.Current.VersionString} {DeviceInfo.Current.Manufacturer} {DeviceInfo.Current.Model}");
