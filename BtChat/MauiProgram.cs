@@ -42,11 +42,17 @@ public static class MauiProgram
 #else
         builder.Services.AddSingleton<IQrScanner, NoQrScanner>();
         builder.Services.AddSingleton<IVoiceRecorder, NoVoiceRecorder>();
+#if WINDOWS
+        builder.Services.AddSingleton<ICallAudio, WindowsCallAudio>();
+        builder.Services.AddSingleton<ICallAlert, WindowsCallAlert>();
+        builder.Services.AddSingleton<ICallVideo, WindowsCallVideo>();
+#else
         builder.Services.AddSingleton<ICallAudio, NoCallAudio>();
         builder.Services.AddSingleton<ICallAlert, NoCallAlert>();
+        builder.Services.AddSingleton<ICallVideo, NoCallVideo>();
+#endif
         builder.Services.AddSingleton<IMessageAlert, NoMessageAlert>();
         builder.Services.AddSingleton<IBiometricAuth, NoBiometricAuth>();
-        builder.Services.AddSingleton<ICallVideo, NoCallVideo>();
 #if WINDOWS
         builder.Services.AddSingleton<IAudioPlayer, WindowsAudioPlayer>();
 #else
