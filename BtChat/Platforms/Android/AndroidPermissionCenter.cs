@@ -16,16 +16,53 @@ public sealed class AndroidPermissionCenter(IPermissionGate gate) : IPermissionC
                 : new PermissionRow(PermissionKind.Notifications, true, false));
             if (!OperatingSystem.IsAndroidVersionAtLeast(29))
                 rows.Add(new PermissionRow(PermissionKind.Storage, await IsGranted<Permissions.StorageWrite>(), true));
-            rows.Add(new PermissionRow(PermissionKind.Network, true, false));
+            rows.Add(new PermissionRow(PermissionKind.Network, DataIsUnrestricted(), true));
             rows.Add(new PermissionRow(PermissionKind.Background, true, false));
             return rows;
         });
+
+    // Internet itself is granted at install; what the user can still restrict is the data saver (background data).
+    static bool DataIsUnrestricted()
+    {
+        try
+        {
+            var manager = (Android.Net.ConnectivityManager?)Android.App.Application.Context.GetSystemService(Android.Content.Context.ConnectivityService);
+            return manager == null || manager.RestrictBackgroundStatus != Android.Net.RestrictBackgroundStatus.Enabled;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("PERM", "reading data saver state failed", ex);
+            return true;
+        }
+    }
+
+    static void OpenDataSettings()
+    {
+        var context = Android.App.Application.Context;
+        try
+        {
+            var intent = new Android.Content.Intent("android.settings.IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS",
+                Android.Net.Uri.Parse("package:" + context.PackageName));
+            intent.AddFlags(Android.Content.ActivityFlags.NewTask);
+            context.StartActivity(intent);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("PERM", "opening data saver settings failed, opening app settings", ex);
+            AppInfo.Current.ShowSettingsUI();
+        }
+    }
 
     static async Task<bool> IsGranted<T>() where T : Permissions.BasePermission, new() =>
         await Permissions.CheckStatusAsync<T>() == PermissionStatus.Granted;
 
     public async Task SetAsync(PermissionKind kind, bool enable)
     {
+        if (kind == PermissionKind.Network)
+        {
+            OpenDataSettings();
+            return;
+        }
         if (enable)
         {
             // The gate explains why the permission is needed, asks, and sends the user to the settings when it was refused for good.

@@ -27,7 +27,9 @@ public sealed partial class PermissionItem : ObservableObject
     public PermissionKind Kind { get; }
     public bool CanToggle { get; }
     public string Title => Loc.Instance["perm" + Kind + "Title"];
-    public string Info => Loc.Instance["permInfo" + Kind];
+    public string Info => Loc.Instance[Kind == PermissionKind.Network && DeviceInfo.Platform == DevicePlatform.WinUI
+        ? "permInfoNetworkWin"
+        : "permInfo" + Kind];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StateText))]
