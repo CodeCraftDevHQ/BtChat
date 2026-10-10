@@ -32,7 +32,39 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(HasDraft));
         OnPropertyChanged(nameof(ShowMediaButton));
         OnPropertyChanged(nameof(ShowSend));
+        OnPropertyChanged(nameof(ShowExpandToggle));
+        // After sending (empty box) the input goes back to its normal size.
+        if (value.Length == 0) ComposerExpanded = false;
     }
+
+    // ---- Message box like Telegram: it grows with the text, and a long text gets an arrow that opens it big.
+
+    [ObservableProperty] bool composerExpanded;
+
+    public bool ShowExpandToggle => Draft.Length > 140 || Draft.Count(c => c == '\n') >= 3;
+    public string ExpandGlyph => ComposerExpanded ? "⌄" : "⌃";
+    public double ComposerMaxHeight => ComposerExpanded ? ExpandedHeight : 140;
+    public double ComposerMinHeight => ComposerExpanded ? ExpandedHeight : 44;
+
+    static double ExpandedHeight
+    {
+        get
+        {
+            var info = DeviceDisplay.Current.MainDisplayInfo;
+            var screen = info.Density > 0 ? info.Height / info.Density : 700;
+            return Math.Max(220, screen * 0.45);
+        }
+    }
+
+    partial void OnComposerExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ExpandGlyph));
+        OnPropertyChanged(nameof(ComposerMaxHeight));
+        OnPropertyChanged(nameof(ComposerMinHeight));
+    }
+
+    [RelayCommand]
+    void ToggleComposer() => ComposerExpanded = !ComposerExpanded;
 
     partial void OnIsCameraModeChanged(bool value) => OnPropertyChanged(nameof(MediaButtonText));
 

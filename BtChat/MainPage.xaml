@@ -192,9 +192,17 @@
                 <Border Grid.Column="1" Style="{StaticResource Card}" Padding="14,0"
                         StrokeShape="RoundRectangle 22" IsVisible="{Binding NotRecording}" MinimumHeightRequest="46">
                     <!-- Editor, not Entry: an Entry is one line and cuts pasted text at the first line break -->
-                    <Editor x:Name="DraftEditor" Text="{Binding Draft}" Placeholder="{Binding DraftPlaceholder}"
-                            BackgroundColor="Transparent" AutoSize="TextChanges" MinimumHeightRequest="44"
-                            MaximumHeightRequest="140" VerticalOptions="Center" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                        <Editor x:Name="DraftEditor" Text="{Binding Draft}" Placeholder="{Binding DraftPlaceholder}"
+                                BackgroundColor="Transparent" AutoSize="TextChanges"
+                                MinimumHeightRequest="{Binding ComposerMinHeight}"
+                                MaximumHeightRequest="{Binding ComposerMaxHeight}" VerticalOptions="Center" />
+                        <!-- Long text: an arrow opens the box big (and closes it again), like Telegram -->
+                        <Button Grid.Column="1" Text="{Binding ExpandGlyph}" FontSize="18" Padding="0"
+                                WidthRequest="36" HeightRequest="36" VerticalOptions="Start" Margin="0,4,0,0"
+                                Style="{StaticResource QuietButton}" IsVisible="{Binding ShowExpandToggle}"
+                                Command="{Binding ToggleComposerCommand}" />
+                    </Grid>
                 </Border>
                 <Button Grid.Column="2" Text="↑" FontSize="22" FontAttributes="Bold" Padding="0"
                         WidthRequest="44" HeightRequest="44" CornerRadius="22"
